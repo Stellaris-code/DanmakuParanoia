@@ -1,0 +1,11 @@
+#ifndef ZORDER_H
+#define ZORDER_H
+
+#define BELOWALL_ZORDER -100
+#define BULLET_ZORDER 10
+#define ABOVEALL_ZORDER 100
+#define PLAYER_ZORDER 5
+#define UNDER_PLAYER_ZORDER 0
+#define PLAYER_HITBOX_ZORDER 20
+
+#endif // ZORDER_H
