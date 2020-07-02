@@ -1,0 +1,401 @@
+#define printf(fmt, ...) asm("syscall #0x0", fmt,  __VA_ARGS__, __VA_COUNT__)
+#define readint() asm("syscall #0x01":int)
+#define readstr() asm("syscall #0x02":str)
+#define startclock() asm("syscall #0x10")
+#define stopclock() asm("syscall #0x11")
+#define assert(test) asm("syscall #0x20", !!(test), #test, __FILE__, __LINE__)
+#define true 1
+#define false 0
+#define bool int
+
+#define PI 3.14159265358979323846
+
+#define DEG2RAD (PI/180.0)
+#define RAD2DEG (180.0/PI)
+
+#define EaseLinear 0
+#define EaseInSine 1
+#define EaseOutSine 2
+#define EaseInOutSine 3
+#define EaseInQuad 4
+#define EaseOutQuad 5
+#define EaseInOutQuad 6
+#define EaseInCubic 7
+#define EaseOutCubic 8
+#define EaseInOutCubic 9
+#define EaseInQuart 10
+#define EaseOutQuart 11
+#define EaseInOutQuart 12
+#define EaseInQuint 13
+#define EaseOutQuint 14
+#define EaseInOutQuint 15
+#define EaseInExpo 16
+#define EaseOutExpo 17
+#define EaseInOutExpo 18
+#define EaseInCirc 19
+#define EaseOutCirc 20
+#define EaseInOutCirc 21
+#define EaseInBack 22
+#define EaseOutBack 23
+#define EaseInOutBack 24
+#define EaseInElastic 25
+#define EaseOutElastic 26
+#define EaseInOutElastic 27
+#define EaseInBounce 28
+#define EaseOutBounce 29
+#define EaseInOutBounce 30
+
+typedef int bullet_id;
+typedef int music_id;
+typedef int spritesheet_id;
+typedef int sprite_id;
+typedef int texture_id;
+typedef int obj3d_id;
+typedef int emitter_id;
+
+// GLOBALS
+int frame;
+
+// DEFINITIONS
+struct vec2
+{
+	real x;
+	real y;
+};
+
+struct vec3
+{
+	real x;
+	real y;
+	real z;
+};
+
+struct rect
+{
+	real x;
+	real y;
+	real w;
+	real h;
+};
+
+vec2 operator+(vec2 a, vec2 b)
+{
+	vec2 result;
+	result.x = a.x+b.x;
+	result.y = a.y+b.y;
+	return result;
+}
+vec2 operator-(vec2 a, vec2 b)
+{
+	vec2 result;
+	result.x = a.x-b.x;
+	result.y = a.y-b.y;
+	return result;
+}
+
+vec2 operator*(real x, vec2 b)
+{
+	vec2 vec;
+	vec.x = x*b.x;
+	vec.y = x*b.y;
+	return vec;
+}
+
+vec2 operator*(vec2 a, vec2 b)
+{
+	vec2 vec;
+	vec.x = a.x*b.x;
+	vec.y = a.y*b.y;
+	return vec;
+}
+
+int operator==(vec2 a, vec2 b)
+{
+	return a.x == b.x && a.y == b.y;
+}
+
+real operator~(vec2 vec)
+{
+	return sqrt(vec.x*vec.x + vec.y*vec.y);
+}
+
+real angle_to(vec2 from, vec2 to)
+{
+	vec2 dir_vec = to - from;
+	return (-1)*atan2(dir_vec.y, dir_vec.x);
+}
+
+vec3 operator+(vec3 a, vec3 b)
+{
+	vec3 result;
+	result.x = a.x+b.x;
+	result.y = a.y+b.y;
+	result.z = a.z+b.z;
+	return result;
+}
+vec3 operator-(vec3 a, vec3 b)
+{
+	vec3 result;
+	result.x = a.x-b.x;
+	result.y = a.y-b.y;
+	result.z = a.z-b.z;
+	return result;
+}
+
+vec3 operator*(real x, vec3 b)
+{
+	vec3 vec;
+	vec.x = x*b.x;
+	vec.y = x*b.y;
+	vec.z = x*b.z;
+	return vec;
+}
+
+vec3 operator*(vec3 a, vec3 b)
+{
+	vec3 vec;
+	vec.x = a.x*b.x;
+	vec.y = a.y*b.y;
+	vec.z = a.z*b.z;
+	return vec;
+}
+
+int operator==(vec3 a, vec3 b)
+{
+	return a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
+real operator~(vec3 vec)
+{
+	return sqrt(vec.x*vec.x + vec.y*vec.y + vec.z*vec.z);
+}
+
+vec2 player_pos()
+{
+	real x;
+	real y;
+	asm("syscall #0x82", &x, &y);
+	return vec2(x, y);
+}
+
+void RegisterEntity(str name)
+{
+	asm("syscall #0x90", name);
+}
+
+void UpdateEntityPos(str name, vec2 pos)
+{
+	asm("syscall #0x91", name, pos.x, pos.y);
+}
+
+struct Sprite
+{
+	sprite_id id;
+	vec2 pos;
+	vec2 size;
+	real angle;
+};
+
+struct AnimationFrame
+{
+	rect tex_rect;
+	int anim_duration;
+};
+
+struct AnimatedSprite
+{
+	str sprite_name;
+	spritesheet_id sheet;
+	vec2 pos;
+	vec2 size;
+	real angle;
+	int start_frame;
+	int total_frametime;
+	AnimationFrame[] frames;
+};
+
+struct Object3D
+{
+	vec3 pos;
+	vec3 orientation;
+	vec3 scale;
+	texture_id texture;
+};
+
+struct MotionData
+{
+    real relative_x;
+    real relative_y;
+
+    real velocity;
+    real acceleration;
+    real direction_angle;
+    real angular_velocity;
+    real rotation;
+    real rotational_speed;
+    real rotational_acceleration;
+
+    real max_speed;
+    real max_accel;
+    real max_rot;
+    real max_angular;
+};
+
+void UpdateMotion(MotionData* motion)
+{
+	asm("syscall #0x83", motion);
+}
+
+#define BULLET_CIRCLE 0
+#define BULLET_RECT   1
+struct Bullet
+{
+	MotionData motion;
+	int type;
+};
+
+struct Spawner
+{
+	MotionData motion;
+	Bullet bullet_to_spawn;
+	int spawn_interval; // in frames
+	int max_bullets;
+	bool active;
+};
+
+void UpdateSpawner(Spawner* s)
+{
+	s->motion.UpdateMotion();
+	
+	if (s->active && s->max_bullets > 0 && frame % s->spawn_interval == 0)
+	{
+		//printf("left : %d\n", s->max_bullets);
+		--s->max_bullets;
+		Bullet instance = s->bullet_to_spawn;
+		instance.motion.direction_angle += s->motion.rotation;
+		instance.motion.rotation = instance.motion.direction_angle + 3.1415/2;
+		instance.motion.relative_x += s->motion.relative_x;
+		instance.motion.relative_y += s->motion.relative_y;
+		CreateBullet(instance);
+	}
+}
+
+bullet_id CreateBullet(Bullet info)
+{
+	return asm("syscall #0x80", &info, info.type :int);
+}
+
+music_id LoadMusic(str path)
+{
+	return asm("syscall #0x84", path:int);
+}
+
+emitter_id LoadEmitter(str emitter_path)
+{
+	return asm("syscall #0x8F", emitter_path:int);
+}
+
+void PlayMusic(music_id music)
+{
+	asm("syscall #0x85", music);
+}
+
+spritesheet_id LoadSpritesheet(str path, str key)
+{
+	return asm("syscall #0x86", path, key:int);
+}
+
+Sprite LoadSprite(spritesheet_id sheet, rect tex_rect)
+{
+	sprite_id id = asm("syscall #0x87", sheet, &tex_rect:int);
+	Sprite sprite;
+	sprite.id = id;
+	return sprite;
+}
+
+real Ease(int function, real t)
+{
+	return asm("syscall #0x8A", t, function:real);
+}
+ 
+struct AnimFrameDesc
+{
+	int x_pos;
+	int y_pos;
+	int duration;
+};
+AnimatedSprite LoadAnimation(str name, spritesheet_id sheet, vec2 scale, vec2 sprite_size, AnimFrameDesc[] frames)
+{
+	RegisterEntity(name);
+	
+	AnimatedSprite sprite;
+	sprite.sprite_name = name;
+	sprite.sheet = sheet;
+	sprite.size = scale*sprite_size;
+	sprite.angle = 0.0; sprite.pos = vec2(0.0, 0.0);
+	sprite.start_frame = 0;
+	sprite.total_frametime = 0;
+	//printf("size : %d\n", frames.size());
+	foreach (frame in frames)
+	{
+		sprite.frames ~= AnimationFrame(rect(frame.x_pos*sprite_size.x, frame.y_pos*sprite_size.y, 
+		sprite_size.x, sprite_size.y), frame.duration);
+		sprite.total_frametime += frame.duration;
+	}
+	
+	return sprite;
+}
+
+void DrawSprite(Sprite sprite, int zorder)
+{
+	asm("syscall #0x88", zorder, sprite.id, sprite.pos.x, sprite.pos.y, sprite.size.x, sprite.size.y, sprite.angle);
+}
+
+void DrawAnimatedSprite(AnimatedSprite sprite, int zorder)
+{
+	UpdateEntityPos(sprite.sprite_name, sprite.pos);
+	
+	asm("syscall #0x89", zorder, sprite.sheet, sprite.pos.x,
+	sprite.pos.y, sprite.size.x, sprite.size.y, sprite.angle, 
+	sprite.frames.size(), sprite.start_frame, sprite.total_frametime, sprite.frames);
+}
+
+Object3D GetObj3D(obj3d_id id)
+{
+	return asm("syscall #0x8B", id:Object3D);
+}
+
+void UpdateObj3D(obj3d_id id, Object3D obj)
+{
+	asm("syscall #0x8C", id, &obj);
+}
+
+obj3d_id CreateObj3D(str path)
+{
+	return asm("syscall #0x8D", path:obj3d_id);
+}
+
+texture_id LoadTexture(str path, str key)
+{
+	return asm("syscall #0x8E", path, key:texture_id);
+}
+
+// don't call function until frame>=start_frame
+void DelayRepeat(int start_frame, void() func_ptr)
+{
+	if (frame >= start_frame)
+		func_ptr();
+}
+void Delay(int start_frame, void() func_ptr)
+{
+	if (frame == start_frame)
+		func_ptr();
+}
+
+void main()
+{
+	frame = asm("syscall #0x81":int);
+	if (frame == 0)
+		init();
+	update(); // call update(frame)
+}
