@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include "sys/alloc.h"
 
 char *read_file(const char *path, unsigned long* len)
 {
@@ -10,7 +11,7 @@ char *read_file(const char *path, unsigned long* len)
     fseek(f,0,SEEK_END);
     *len=ftell(f);
     fseek(f,0,SEEK_SET);
-    char *data=(char*)malloc(*len+1+4096); // extra space to be safe regarding SIMD operations
+    char *data=(char*)danpa_alloc(*len+1+4096); // extra space to be safe regarding SIMD operations
     fread(data,1,*len,f);
     data[*len]='\0';
     fclose(f);

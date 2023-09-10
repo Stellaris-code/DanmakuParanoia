@@ -34,13 +34,10 @@ Thumbs.db
 
 [Bb]in
 [Dd]ebug/
-[Dd]ebug.win32/
-[Dd]ebug.DLL/
 *.sbr
 *.sdf
 obj/
 [R]elease/
-[Rr]elease.win32/
 _ReSharper*/
 [Tt]est[Rr]esult*
 ipch/
@@ -55,31 +52,6 @@ packages/
 *.a
 *.bc
 *.so
-
-# Ignore all examples files
-examples/*
-# Unignore all examples dirs
-!examples/*/
-# Unignore all examples files with extension
-!examples/*.c
-!examples/*.lua
-!examples/*.png
-# Unignore examples Makefile
-!examples/Makefile
-!examples/Makefile.Android
-!examples/raylib_compile_execute.bat
-!examples/raylib_makefile_example.bat
-
-# Ignore all games files
-games/*
-# Unignore all games dirs
-!games/*/
-# Unignore all games files with extension
-!games/*.c
-!games/*.png
-# Unignore games makefile
-!games/Makefile
-!games/Makefile.Android
 
 # Ignore files build by xcode
 *.mode*v*
@@ -97,7 +69,7 @@ DerivedData/
 
 # Jetbrains project
 .idea/
-cmake-build-debug/
+cmake-build-*/
 
 # CMake stuff
 CMakeCache.txt
@@ -109,10 +81,6 @@ install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
 build
-
-# Unignore These makefiles...
-!examples/CMakeLists.txt
-!games/CMakeLists.txt
 
 # Ignore GNU global tags
 GPATH

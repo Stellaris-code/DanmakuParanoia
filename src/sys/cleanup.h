@@ -3,8 +3,15 @@
 
 typedef void(*cleanup_callback)(void);
 
-void register_cleanup(cleanup_callback callback);
+typedef enum cleanup_event
+{
+    FrameEnd = 0,
+    GamestateEnd = 1,
+    AppEnd = 2
+} cleanup_event;
 
-void do_cleanup();
+void register_cleanup(cleanup_callback callback, cleanup_event event);
+
+void do_cleanup(cleanup_event event);
 
 #endif // CLEANUP_H

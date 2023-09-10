@@ -1,6 +1,9 @@
 #include "timed_action.h"
 
+#include <string.h>
+
 #include "sys/log.h"
+#include "sys/cleanup.h"
 
 typedef struct action_entry_t
 {
@@ -40,4 +43,14 @@ void timed_actions_update(float dt)
             entries[i].callback = 0; // reset
         }
     }
+}
+
+static void cleanup_timed_actions()
+{
+    memset(entries, 0, sizeof(entries));
+}
+
+void init_timed_actions()
+{
+    register_cleanup(cleanup_timed_actions, GamestateEnd);
 }

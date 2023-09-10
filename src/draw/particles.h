@@ -29,8 +29,8 @@ typedef struct particle_t
     vector2d_t initial_scale;
     vector2d_t final_scale;
 
-    easing_functions scale_easing;
-    easing_functions color_easing;
+    easing_function_enum scale_easing;
+    easing_function_enum color_easing;
 
     sprite_frame_id_t spriteframe;
 } particle_t;

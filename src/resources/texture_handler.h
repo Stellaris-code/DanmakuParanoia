@@ -29,10 +29,10 @@ SOFTWARE.
 
 #include "draw/spriteframe.h"
 
-#define INVALID_TEXTURE_ID 0xFF
+#define INVALID_TEXTURE_ID 0xFFFFFFFF
 
-typedef uint8_t spritesheet_id_t;
-typedef uint8_t texture_id_t;
+typedef uint32_t spritesheet_id_t;
+typedef uint32_t texture_id_t;
 
 static inline sprite_frame_t get_sprite_frame(spritesheet_id_t id)
 {
@@ -48,6 +48,7 @@ spritesheet_id_t load_spritesheet(const char* filename, const char *key);
 
 texture_id_t register_texture(texture_t tex, const char* key);
 texture_t*   retrieve_texture(texture_id_t id);
+void         release_texture(texture_id_t id);
 
 sprite_frame_id_t load_sprite_frame(spritesheet_id_t sprsht, rect_t tex_rec);
 

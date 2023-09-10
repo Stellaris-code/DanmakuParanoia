@@ -32,29 +32,27 @@ SOFTWARE.
 #include "collision/collision.h"
 #include "math/vector.h"
 #include "gameplay/motion.h"
-
-#define MAX_BULLETS MAX_HITBOX_COUNT
+#include "utils/resource_pool.h"
+#include "bullet_id.h"
 
 typedef enum BulletType
 {
-    Circle,
-    Rect
+    Circle = 0,
+    Rect,
+
+    MAX_BULLET_TYPES
 } BulletType;
 
-typedef struct bullet_t
-{
-    hitbox_id_t hitbox;
-    BulletType type;
-    sprite_frame_id_t sprite;
-    motion_data_t motion;
+#define MAX_BULLETS_PER_TYPE MAX_HITBOX_COUNT/MAX_BULLET_TYPES
 
-    // internal data
-    float* hitbox_center_x; // pointer to the hitbox's position field
-    float* hitbox_center_y; // pointer to the hitbox's position field
-    float* hitbox_angle;    // pointer to the hitbox's angle field
-    float  visible_radius; // computed for each update
-    bool to_be_removed;
-} bullet_t;
+extern texture_t sprite_tex_atlas;
+
+typedef struct bullet_info_t
+{
+    uint8_t type;
+    hitbox_id_t hitbox;
+    sprite_frame_id_t sprite;
+} bullet_info_t;
 
 typedef struct cicle_info_t
 {
@@ -64,14 +62,16 @@ typedef struct cicle_info_t
 
 typedef struct rect_info_t
 {
-    float width;
-    float height;
+    uint16_t width;
+    uint16_t height;
     float hitbox_width;
     float hitbox_height;
 } rect_info_t;
 
-// returns a pointer to the actual registered bullet
-bullet_t *register_bullet(bullet_t bullet_info, void* specific_data);
+void init_bullet_manager();
+void cleanup_bullet_manager();
+
+bullet_id_t register_bullet(bullet_info_t bullet_info, motion_data_t motion, void* specific_data);
 void update_bullets(float dt);
 void draw_bullets();
 void clear_bullets();

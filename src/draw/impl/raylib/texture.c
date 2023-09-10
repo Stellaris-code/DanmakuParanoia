@@ -15,9 +15,9 @@ void cleanup_textures()
 void init_textures()
 {
     // init the FBO used for postfx
-    render_texture = LoadRenderTexture(global_state.game_area_size.x, global_state.game_area_size.y, false);
+    render_texture = LoadRenderTexture(global_state.game_area_size.x, global_state.game_area_size.y);
 
-    register_cleanup(cleanup_textures);
+    register_cleanup(cleanup_textures, AppEnd);
 }
 
 texture_t load_texture(const char *filepath)
@@ -46,7 +46,7 @@ texture_t capture_framebuffer()
     game_area_rect.x = game_area_rect.y = 0;
     game_area_rect.width = global_state.game_area_size.x;
     game_area_rect.height = global_state.game_area_size.y;
-    BlitRenderTexture(render_texture, game_area_rect, game_area_rect);
+    //BlitRenderTexture(render_texture, game_area_rect, game_area_rect);
 
     texture_t tex;
     tex.id = render_texture.texture.id;

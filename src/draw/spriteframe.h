@@ -30,6 +30,8 @@ SOFTWARE.
 #include "draw/texture.h"
 #include "math/vector.h"
 
+#define MAX_SPRITE_FRAMES 1024
+
 typedef uint32_t sprite_frame_id_t;
 
 typedef struct sprite_frame_t

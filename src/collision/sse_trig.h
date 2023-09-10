@@ -35,6 +35,10 @@
 
 /* yes I know, the top of this file is quite ugly */
 
+#ifdef __SSE2__
+#define USE_SSE2
+#endif
+
 #ifdef _MSC_VER /* visual c++ */
 # define ALIGN16_BEG __declspec(align(16))
 # define ALIGN16_END 

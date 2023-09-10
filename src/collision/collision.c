@@ -34,7 +34,6 @@ int rect_hitbox_index = 0;
 int circle_hitbox_index = 0;
 
 // used to skip checking a whole bunch of hitboxes if we know that they are empty
-#define HITBOX_CHUNK_SIZE 1024
 unsigned hitbox_chunk_count[(MAX_HITBOX_COUNT/SIMD_FLT_PER_REG) / HITBOX_CHUNK_SIZE];
 
 #include "circle_collision.c"
@@ -72,19 +71,6 @@ hitbox_id_t register_hitbox(void* hitbox_list, unsigned hitbox_len, int *hitbox_
     }
 
     return INVALID_HITBOX_ID; // no hitbox of this type could be allocated
-}
-
-void free_hitbox(void* hitbox_list, unsigned hitbox_len, hitbox_id_t id)
-{
-    void* packed_hitbox_ptr = ((uint8_t*)hitbox_list + (id/SIMD_FLT_PER_REG)*hitbox_len);
-    bullet_id_t* id_field = (bullet_id_t*)packed_hitbox_ptr + (id%SIMD_FLT_PER_REG);
-
-    assert(*id_field != INVALID_BULLET_ID);
-
-    *id_field = INVALID_BULLET_ID;
-
-    unsigned chunk_id = (id/SIMD_FLT_PER_REG) / HITBOX_CHUNK_SIZE;
-    --hitbox_chunk_count[chunk_id];
 }
 
 bullet_id_t test_collision(float pos_x, float pos_y, float hit_radius)

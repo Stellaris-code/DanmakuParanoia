@@ -7,6 +7,12 @@
 #define PI 3.1415926545
 #endif
 
+float easeConstantUp(float t)
+{
+    (void)t;
+    return 1;
+}
+
 float easeLinear(float t)
 {
     return t;
@@ -112,18 +118,18 @@ float easeInOutExpo( float t ) {
 }
 
 float easeInCirc( float t ) {
-    return 1 - sqrt( 1 - t );
+    return 1 - sqrtf( 1 - t );
 }
 
 float easeOutCirc( float t ) {
-    return sqrt( t );
+    return sqrtf( t );
 }
 
 float easeInOutCirc( float t ) {
     if( t < 0.5 ) {
-        return (1 - sqrt( 1 - 2 * t )) * 0.5;
+        return (1 - sqrtf( 1 - 2 * t )) * 0.5;
     } else {
-        return (1 + sqrt( 2 * t - 1 )) * 0.5;
+        return (1 + sqrtf( 2 * t - 1 )) * 0.5;
     }
 }
 
@@ -184,10 +190,11 @@ float easeInOutBounce( float t ) {
     }
 }
 
-easing_function_t getEasingFunction( easing_functions function )
+easing_function_t getEasingFunction( easing_function_enum function )
 {
     switch (function)
     {
+        case EaseConstantUp : return easeConstantUp;
         case EaseLinear : return easeLinear;
         case EaseInSine : return  	easeInSine;
         case EaseOutSine : return  	easeOutSine;
@@ -224,9 +231,11 @@ easing_function_t getEasingFunction( easing_functions function )
     }
 }
 
-easing_functions strToEasing(const char *str)
+easing_function_enum strToEasing(const char *str)
 {
-    if (strcmp(str, "easeLinear") == 0 || strcmp(str, "linear") == 0)
+    if (strcmp(str, "easeConstantUp") == 0 || strcmp(str, "constantUp") == 0)
+        return EaseConstantUp;
+    if (strcmp(str, "none") == 0 || strcmp(str, "easeLinear") == 0 || strcmp(str, "linear") == 0)
         return EaseLinear;
     if (strcmp(str, "easeInSine") == 0)
         return EaseInSine;

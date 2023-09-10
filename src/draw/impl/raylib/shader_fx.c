@@ -4,38 +4,48 @@
 #include <stdbool.h>
 #include <assert.h>
 
+#include "thread_support.h"
+
 #include "gameplay/gamestate.h"
 #include "sys/cleanup.h"
+#include "sys/log.h"
+#include "sys/alloc.h"
 #include "draw/drawlist.h"
 #include "draw/draw.h"
 #include "draw/drawlist.h"
+
+#include "utils/resource_pool.h"
 
 static Texture2D blank_texture;
 
 typedef struct shader_entry_t
 {
     Shader rlgl_shader;
-    bool loaded;
-    bool enabled;
 
-    ShaderType type;
+    bool loaded;
+    bool joined;
+    thrd_t loading_thrd;
+
+    bool enabled;
     bool ignore_global_transformations;
-    int zorder;
+    ShaderType type;
+
     float time_acc;
     float duration;
     // shader locations
     int time_loc;
     int ratio_loc;
     int player_pos_loc;
+    int zorder;
 } shader_entry_t;
 
-static shader_entry_t shader_fxs[MAX_SHADER_FXS];
+DEFINE_RESOURCE_POOL(shader_pool, shader_entry_t, MAX_SHADER_FXS);
 
 void cleanup_shader_fx();
 
 void init_shader_fx()
 {
-    register_cleanup(&cleanup_shader_fx);
+    register_cleanup(&cleanup_shader_fx, GamestateEnd);
 
     Image imBlank = GenImageColor(global_state.game_area_size.x, global_state.game_area_size.y, BLANK);
     blank_texture = LoadTextureFromImage(imBlank);  // Load blank texture to fill on shader
@@ -44,90 +54,117 @@ void init_shader_fx()
 
 void cleanup_shader_fx()
 {
-    for (int i = 0; i < MAX_SHADER_FXS; ++i)
+    FOR_EACH_RES(shader_pool, id, shader_entry_t*, entry)
     {
-        if (shader_fxs[i].loaded)
-        {
-            unload_shader(i);
-        }
+        unload_shader(id);
     }
+    res_pool_clear(&shader_pool);
     UnloadTexture(blank_texture);
 }
 
 void update_shader_fx(float dt)
 {
-    for (int i = 0; i < MAX_SHADER_FXS; ++i)
+    FOR_EACH_RES(shader_pool, id, shader_entry_t*, entry)
     {
-        if (shader_fxs[i].loaded && shader_fxs[i].enabled)
+        if (entry->enabled)
         {
-            shader_fxs[i].time_acc += dt;
-            shader_fxs[i].duration -= dt;
+            entry->time_acc += dt;
+            entry->duration -= dt;
             vector2d_t norm_pos = global_state.player.pos;
             norm_pos.x /= global_state.game_area_size.x; norm_pos.y /= global_state.game_area_size.y;
             float ratio = (float)(global_state.game_area_size.x)/(float)(global_state.game_area_size.y);
-            SetShaderValue(shader_fxs[i].rlgl_shader, shader_fxs[i].time_loc, &shader_fxs[i].time_acc, UNIFORM_FLOAT);
-            SetShaderValue(shader_fxs[i].rlgl_shader, shader_fxs[i].ratio_loc, &ratio, UNIFORM_FLOAT);
-            SetShaderValue(shader_fxs[i].rlgl_shader, shader_fxs[i].player_pos_loc, &norm_pos, UNIFORM_VEC2);
+            SetShaderValue(entry->rlgl_shader, entry->time_loc, &entry->time_acc, SHADER_UNIFORM_FLOAT);
+            SetShaderValue(entry->rlgl_shader, entry->ratio_loc, &ratio, SHADER_UNIFORM_FLOAT);
+            SetShaderValue(entry->rlgl_shader, entry->player_pos_loc, &norm_pos, SHADER_UNIFORM_VEC2);
 
-            if (shader_fxs[i].duration <= 0.0f)
-                disable_shader(i);
+            if (entry->duration <= 0.0f)
+                disable_shader(id);
         }
     }
+}
+
+static void join_shader_loading(shader_entry_t* shader)
+{
+    if (shader->joined)
+        return;
+
+    if (!shader->loaded)
+        trace_log(LOG_INFO, "Joining on shader loading thread\n");
+
+    thrd_join(shader->loading_thrd, NULL);
+    assert(shader->loaded);
+    shader->joined = true;
 }
 
 void enable_shader(shader_fx_id_t id, float duration, int zorder, bool ignore_global_transformations)
 {
-    assert(id != INVALID_SHADER_FX_ID);
-    assert(id < MAX_SHADER_FXS);
+    shader_entry_t* entry = res_pool_get(&shader_pool, id);
+    if (!entry)
+        return;
 
-    shader_fxs[id].enabled = true;
-    shader_fxs[id].time_acc = 0.0f;
-    shader_fxs[id].duration = duration;
-    shader_fxs[id].zorder = zorder;
-    shader_fxs[id].ignore_global_transformations = ignore_global_transformations;
+    join_shader_loading(entry);
+
+    entry->enabled = true;
+    entry->time_acc = 0.0f;
+    entry->duration = duration;
+    entry->zorder = zorder;
+    entry->ignore_global_transformations = ignore_global_transformations;
 
     vector2d_t norm_pos = global_state.player.pos;
     norm_pos.x /= global_state.game_area_size.x; norm_pos.y /= global_state.game_area_size.y;
     float ratio = (float)(global_state.game_area_size.x)/(float)(global_state.game_area_size.y);
-    SetShaderValue(shader_fxs[id].rlgl_shader, shader_fxs[id].time_loc, &shader_fxs[id].time_acc, UNIFORM_FLOAT);
-    SetShaderValue(shader_fxs[id].rlgl_shader, shader_fxs[id].ratio_loc, &ratio, UNIFORM_FLOAT);
-    SetShaderValue(shader_fxs[id].rlgl_shader, shader_fxs[id].player_pos_loc, &norm_pos, UNIFORM_VEC2);
+    SetShaderValue(entry->rlgl_shader, entry->time_loc, &entry->time_acc, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(entry->rlgl_shader, entry->ratio_loc, &ratio, SHADER_UNIFORM_FLOAT);
+    SetShaderValue(entry->rlgl_shader, entry->player_pos_loc, &norm_pos, SHADER_UNIFORM_VEC2);
 }
 
 void disable_shader(shader_fx_id_t id)
 {
-    assert(id != INVALID_SHADER_FX_ID);
-    assert(id < MAX_SHADER_FXS);
+    shader_entry_t* entry = res_pool_get(&shader_pool, id);
+    assert(entry);
 
-    shader_fxs[id].enabled = false;
+    entry->enabled = false;
+}
+
+
+static void impl_load_shader(shader_entry_t* entry, const char *shader_path)
+{
+    char* fShaderStr = LoadFileText(shader_path);
+    entry->rlgl_shader = LoadShaderFromMemory(NULL, fShaderStr);
+    danpa_free(fShaderStr);
+
+    entry->time_loc = GetShaderLocation(entry->rlgl_shader, "uTime");
+    entry->ratio_loc = GetShaderLocation(entry->rlgl_shader, "uAspectRatio");
+    entry->player_pos_loc = GetShaderLocation(entry->rlgl_shader, "uPos");
+    entry->loaded = true;
 }
 
 shader_fx_id_t load_shader(const char *shader_path, ShaderType type)
 {
-    for (int i = 0; i < MAX_SHADER_FXS; ++i)
-    {
-        if (!shader_fxs[i].loaded)
-        {
-            shader_fxs[i].rlgl_shader = LoadShader(NULL, shader_path);
-            shader_fxs[i].time_loc = GetShaderLocation(shader_fxs[i].rlgl_shader, "uTime");
-            shader_fxs[i].ratio_loc = GetShaderLocation(shader_fxs[i].rlgl_shader, "uAspectRatio");
-            shader_fxs[i].player_pos_loc = GetShaderLocation(shader_fxs[i].rlgl_shader, "uPos");
-            shader_fxs[i].type = type;
+    res_id_t id = res_pool_alloc(&shader_pool);
+    if (id == INVALID_RES_ID)
+        return id;
 
-            shader_fxs[i].loaded  = true;
-            shader_fxs[i].enabled = false;
+    shader_entry_t* entry = res_pool_get(&shader_pool, id);
+    entry->enabled = false;
+    entry->type = type;
 
-            return i;
-        }
-    }
+    impl_load_shader(entry, shader_path);
+    entry->joined = true;
 
-    return INVALID_SHADER_FX_ID;
+    return id;
+}
+
+shader_fx_id_t load_shader_defer(const char *shader_path, ShaderType type)
+{
+    // FIXME : actually implement deferred shader loading
+    return load_shader(shader_path, type);
 }
 
 void draw_shader_callback(void* shader_ptr)
 {
     shader_entry_t* shader = shader_ptr;
-    assert(shader->loaded && shader->enabled);
+    assert(shader->enabled);
 
     rect_t game_area_rect;
     game_area_rect.x = game_area_rect.y = 0;
@@ -159,22 +196,21 @@ void draw_shader_callback(void* shader_ptr)
 
 void draw_shader_fx()
 {
-    for (int i = 0; i < MAX_SHADER_FXS; ++i)
+    FOR_EACH_RES(shader_pool, id, shader_entry_t*, shader)
     {
-        if (shader_fxs[i].loaded && shader_fxs[i].enabled)
+        if (shader->enabled)
         {
-            register_draw_element(&shader_fxs[i], draw_shader_callback, shader_fxs[i].zorder);
+            register_draw_element(shader, draw_shader_callback, shader->zorder);
         }
     }
 }
 
 void unload_shader(shader_fx_id_t id)
 {
-    assert(id != INVALID_SHADER_FX_ID);
-    assert(id < MAX_SHADER_FXS);
-
-    if (!shader_fxs[id].loaded)
+    shader_entry_t* shader = res_pool_get(&shader_pool, id);
+    if (!shader)
         return;
-    shader_fxs[id].loaded = false;
-    UnloadShader(shader_fxs[id].rlgl_shader);
+
+    join_shader_loading(shader);
+    UnloadShader(shader->rlgl_shader);
 }

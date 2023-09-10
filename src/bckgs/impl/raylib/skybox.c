@@ -1,6 +1,8 @@
 #include "bckgs/skybox.h"
 
 #include "sys/cleanup.h"
+#include "sys/time.h"
+
 
 #include <raylib.h>
 #include <rlgl.h>
@@ -13,16 +15,21 @@ void load_skybox(const char *cubemap_path)
 {
     reset_skybox();
 
+
+
     // init skybox models
     cube = GenMeshCube(1.0f, 1.0f, 1.0f);
     skybox_model = LoadModelFromMesh(cube);
 
     skybox_model.materials[0].shader = LoadShader("resources/shaders/skybox.vs", "resources/shaders/skybox.fs");
-    SetShaderValue(skybox_model.materials[0].shader, GetShaderLocation(skybox_model.materials[0].shader, "environmentMap"), (int[1]){ MAP_CUBEMAP }, UNIFORM_INT);
+    SetShaderValue(skybox_model.materials[0].shader, GetShaderLocation(skybox_model.materials[0].shader, "environmentMap"), (int[1]){ MATERIAL_MAP_CUBEMAP }, SHADER_UNIFORM_INT);
 
     Image skybox_image = LoadImage("resources/skybox.png");
-    skybox_cubemap = LoadTextureCubemap(skybox_image, CUBEMAP_AUTO_DETECT, 0);
-    skybox_model.materials[0].maps[MAP_CUBEMAP].texture = skybox_cubemap;
+    double bob = elapsed_time();
+    skybox_cubemap = LoadTextureCubemap(skybox_image, CUBEMAP_LAYOUT_AUTO_DETECT);
+    double diff = elapsed_time() - bob;
+    printf("------  cubemap time : %02.03f\n", diff*1000);
+    skybox_model.materials[0].maps[MATERIAL_MAP_CUBEMAP].texture = skybox_cubemap;
 
     UnloadImage(skybox_image);
 }
@@ -34,7 +41,9 @@ void reset_skybox()
         UnloadShader(skybox_model.materials[0].shader);
         UnloadTexture(skybox_cubemap);
         UnloadModel(skybox_model);
+        cube.vertexCount = 0;
     }
+
 }
 
 void draw_skybox()
@@ -50,5 +59,5 @@ void draw_skybox()
 
 void init_skybox()
 {
-    register_cleanup(reset_skybox);
+    register_cleanup(reset_skybox, GamestateEnd);
 }

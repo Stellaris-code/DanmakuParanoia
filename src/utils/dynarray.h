@@ -25,12 +25,13 @@ SOFTWARE.
 #ifndef DYNARRAY_H
 #define DYNARRAY_H
 
-#include <stdlib.h>
-#define IMPL_DYNARRAY_ALLOC malloc
-#define IMPL_DYNARRAY_REALLOC realloc
-#define IMPL_DYNARRAY_FREE free
+#include "sys/alloc.h"
 
-#define DYNARRAY_PRE_ALLOCATE 0
+#define IMPL_DYNARRAY_ALLOC danpa_alloc
+#define IMPL_DYNARRAY_REALLOC danpa_realloc
+#define IMPL_DYNARRAY_FREE danpa_free
+
+#define DYNARRAY_PRE_ALLOCATE 1
 
 #define DYNARRAY(type) \
     struct { \
@@ -66,8 +67,8 @@ SOFTWARE.
             (array).capacity = 1; \
         (array).capacity *= 2; \
         (array).ptr = IMPL_DYNARRAY_REALLOC((array).ptr, sizeof(*(array).ptr)*(array).capacity);}\
-     typeof(*(array).ptr) tmp = __VA_ARGS__; \
-    (array).ptr[(array).size-1] = tmp; \
+     typeof(*(array).ptr) dynarray_imp_tmp = __VA_ARGS__; \
+    (array).ptr[(array).size-1] = dynarray_imp_tmp; \
     } while (0)
 
 #define DYNARRAY_POP(array) \

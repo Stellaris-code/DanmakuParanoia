@@ -74,7 +74,7 @@ int vfx_register_impl(int layer, draw_callback_t* callback, void* fx_data, unsig
     return -1;
 }
 #define VFX_REGISTER(callback, data) \
-    vfx_register_impl(callback, &data, sizeof(data), #callback)
+    vfx_register_impl(callback, &(data), sizeof(data), #callback)
 
 // all VFX here
 
@@ -88,5 +88,5 @@ void vfx_clear()
 
 void init_vfx()
 {
-    register_cleanup(vfx_clear);
+    register_cleanup(vfx_clear, GamestateEnd);
 }

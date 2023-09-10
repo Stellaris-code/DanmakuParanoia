@@ -10,6 +10,9 @@
 #ifdef __SSE4_2__
 #include <nmmintrin.h>
 #endif
+#ifdef __SSSE3__
+#include <tmmintrin.h>
+#endif
 #ifdef __SSE2__
 #include <pmmintrin.h>
 #endif
@@ -561,6 +564,7 @@ static unsigned inline parse_string(unsigned int* str_idx, const char** ptr, jso
                     error("invalid unicode escape", ptr, context);
                 utf8_encode(unescape_codepoint((uint8_t*)&start[i]), &string);
             }
+        }
 #elif defined(__SSE2__)
         const __m128i data = _mm_loadu_si128((const __m128i*)&start[i]);
         const __m128i backslash_mask    = _mm_cmpeq_epi8(data, _mm_set1_epi8('\\'));
@@ -589,7 +593,6 @@ static unsigned inline parse_string(unsigned int* str_idx, const char** ptr, jso
 #else
         *string++ = value;
 #endif
-        }
     }
     *string = '\0';
 
@@ -879,7 +882,7 @@ no_ws_loop:
             else if (count/2-1 != marker_ptr->commas) // halved because of key/value pairs
                 error("invalid number of commas", &ptr, context);
 
-            JSON_ALLOC(key_val_buffer, count/2);
+            JSON_ALLOC(key_val_buffer, count/2); // FIXME : the macro expects a char** ptr, not a char*
 
             const unsigned start_idx = context->key_val_buffer_brk - count/2;
 
@@ -1260,15 +1263,15 @@ static char* print_double(double val, char* ptr)
 }
 
 #define PRINTC(c) \
-    **ptr = c; ++*ptr; if (*ptr >= end_of_buf) return;
+    do { **ptr = c; ++*ptr; if (*ptr >= end_of_buf) return; } while (0)
 #define PRINTSTR(str, n) \
-    if (*ptr+n >= end_of_buf) return; \
-    memcpy(*ptr, str, n); *ptr += n;
+    do {  if (*ptr+(n) >= end_of_buf) return; \
+    memcpy(*ptr, (str), (n)); *ptr += (n);  } while (0)
 #define PRINTNEWLINE() \
-    if (*ptr + depth+1 >= end_of_buf) return; \
+    do {  if (*ptr + depth+1 >= end_of_buf) return; \
     **ptr = '\n'; ++*ptr; \
     for (unsigned int i = 0; i < depth; ++i) \
-    { **ptr = ' '; ++*ptr; }
+    { **ptr = ' '; ++*ptr; }  } while (0)
 
 
 #ifndef __SSE4_2__

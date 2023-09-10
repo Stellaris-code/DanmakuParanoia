@@ -11,13 +11,17 @@
 #include "resources/texture_handler.h"
 #include "resources/music_handler.h"
 #include "draw/draw.h"
-#include "draw/animation.h"
+#include "draw/frame_animation.h"
 #include "draw/particles.h"
 #include "bckgs/3d_obj.h"
 #include "scripting/vm_drawlist.h"
+#include "sys/log.h"
+
+#include "engine/engine.h"
+
+#include "properties.h"
 
 // TODO : use something better than ugly extern references
-
 extern float frame_time;
 extern sprite_frame_id_t sprite;
 extern sprite_frame_id_t shard_sprite;
@@ -53,7 +57,7 @@ void update_motion_syscall(vm_state_t* state)
     motion.rotation = VAR_VAL_FLT(region->base[6]);
     motion.rotational_speed = VAR_VAL_FLT(region->base[7]);
 
-    update_motion(frame_time, &motion);
+    update_motion(engine.frame_time, &motion);
 
     region->base[0] = MK_FLT(motion.relative_x);
     region->base[1] = MK_FLT(motion.relative_y);
@@ -72,8 +76,11 @@ void get_frame_syscall(vm_state_t* state)
 
 void create_bullet_syscall(vm_state_t* state)
 {
+    var_t count = pop_stack(state);
     var_t type = pop_stack(state);
     var_t ptr = pop_stack(state);
+    if (VAR_TYPE(count) != INT)
+        goto error;
     if (VAR_TYPE(type) != INT)
         goto error;
     if (VAR_TYPE(ptr) != PTR)
@@ -83,7 +90,8 @@ void create_bullet_syscall(vm_state_t* state)
     if (region->size < 13)
         goto error;
 
-    bullet_t bullet = {0};
+    motion_data_t motion = {0};
+    bullet_info_t bullet = {0};
     if (VAR_VAL(type) == 0)
         bullet.type = Circle;
     else if (VAR_VAL(type) == 1)
@@ -91,30 +99,36 @@ void create_bullet_syscall(vm_state_t* state)
     else // default
         bullet.type = Circle;
     bullet.sprite = sprite;
-    bullet.motion.relative_x = VAR_VAL_FLT(region->base[0]);
-    bullet.motion.relative_y = VAR_VAL_FLT(region->base[1]);
-    bullet.motion.velocity = VAR_VAL_FLT(region->base[2]);
-    bullet.motion.acceleration = VAR_VAL_FLT(region->base[3]);
-    bullet.motion.direction_angle = VAR_VAL_FLT(region->base[4]);
-    bullet.motion.angular_velocity = VAR_VAL_FLT(region->base[5]);
-    bullet.motion.rotation = VAR_VAL_FLT(region->base[6]);
-    bullet.motion.rotational_speed = VAR_VAL_FLT(region->base[7]);
-    if (bullet.type == Circle)
+    motion.relative_x = VAR_VAL_FLT(region->base[0]);
+    motion.relative_y = VAR_VAL_FLT(region->base[1]);
+    motion.velocity = VAR_VAL_FLT(region->base[2]);
+    motion.acceleration = VAR_VAL_FLT(region->base[3]);
+    motion.direction_angle = VAR_VAL_FLT(region->base[4]);
+    motion.angular_velocity = VAR_VAL_FLT(region->base[5]);
+    motion.rotation = VAR_VAL_FLT(region->base[6]);
+    motion.rotational_speed = VAR_VAL_FLT(region->base[7]);
+
+    for (unsigned i = 0; i < VAR_VAL(count); ++i)
     {
-        circle_info_t info = {0};
-        info.radius = 16.f;
-        info.hitbox_radius = 5.f;
-        register_bullet(bullet, &info);
-    }
-    else if (bullet.type == Rect)
-    {
-        bullet.sprite = shard_sprite;
-        rect_info_t info = {0};
-        info.width = 16.f;
-        info.height = 18.f;
-        info.hitbox_width = 5.f;
-        info.hitbox_height = 10.f;
-        register_bullet(bullet, &info);
+
+        if (bullet.type == Circle)
+        {
+            circle_info_t info = {0};
+            info.radius = 16.f;
+            info.hitbox_radius = 5.f;
+            register_bullet(bullet, motion, &info);
+        }
+        else if (bullet.type == Rect)
+        {
+            bullet.sprite = shard_sprite;
+            rect_info_t info = {0};
+            info.width = 8.f;
+            info.height = 16.f;
+            info.hitbox_width = 5.f;
+            info.hitbox_height = 10.f;
+            register_bullet(bullet, motion, &info);
+        }
+
     }
 
     push_stack(state, MK_VAR(0, INT)); // supposed to be the id
@@ -137,6 +151,7 @@ void load_music_syscall(vm_state_t* state)
     vm_read_str(state, path, path_buf, 1024);
 
     music_id_t music = load_music(path_buf);
+    vm_register_resource(state, music, stop_music);
     push_stack(state, MK_VAR(music, INT));
 }
 
@@ -258,7 +273,7 @@ void draw_animated_sprite_syscall(vm_state_t* state)
     if (VAR_VAL(var_frame_count) >= MAX_ANIM_FRAMES)
         return;
 
-    animation_t anim;
+    frame_animation_t anim;
     anim.sheet = VAR_VAL(var_id);
     anim.anim_frame_count = VAR_VAL(var_frame_count);
     anim.start_frame = VAR_VAL(var_start_frame);
@@ -294,17 +309,16 @@ void easing_syscall(vm_state_t* vm)
         return;
     }
 
-    easing_functions func = (easing_functions)VAR_VAL(easing_func);
+    easing_function_enum func = (easing_function_enum)VAR_VAL(easing_func);
     easing_function_t ptr = getEasingFunction(func);
 
     float val = ptr(VAR_VAL_FLT(float_in));
     push_stack(vm, MK_FLT(val));
-    return;
 }
 
 void get_obj3d_syscall(vm_state_t* vm)
 {
-    uint16_t region_id = alloc_memory_region(vm, sizeof(var_t)*(3*3 + 1)); // 3 vec3 + 1 tex_id
+    uint16_t region_id = alloc_memory_region(vm, 3*3 + 1); // 3 vec3 + 1 tex_id
 
     var_t id_var = pop_stack(vm);
     if (VAR_TYPE(id_var) != INT)
@@ -372,10 +386,11 @@ void create_obj3d_syscall(vm_state_t* vm)
         return;
     }
 
-    char path_buf[1024];
-    vm_read_str(vm, path, path_buf, 1024);
+    char path_buf[256];
+    vm_read_str(vm, path, path_buf, 256);
 
     obj3d_id_t id = load_obj3d(path_buf);
+    vm_register_resource(vm, id, delete_obj3d);
     push_stack(vm, MK_VAR(id, INT));
 }
 
@@ -396,6 +411,7 @@ void load_texture_syscall(vm_state_t* vm)
 
     texture_t tex = load_texture(path_buf);
     texture_id_t id = register_texture(tex, key_buf);
+    vm_register_resource(vm, id, release_texture);
     push_stack(vm, MK_VAR(id, INT));
 }
 
@@ -452,24 +468,113 @@ void update_entity_syscall(vm_state_t* vm)
     set_entity_value(name_buf, "motion", &val);
 }
 
+static var_t get_property_var(vm_state_t* vm, const char* id)
+{
+    script_property_t* property = get_property(id);
+    if (!property)
+    {
+        trace_log(LOG_WARNING, "Invalid scripting property : '%s'\n", id);
+
+        return MK_STR(alloc_memory_region_str(vm, "<invalid>"));
+    }
+
+    property_value_t prop_val;
+    if (property->is_constant)
+        prop_val = property->const_val;
+    else
+        prop_val = property->getter();
+
+
+    switch (property->type)
+    {
+        case PropertyInt:
+            return MK_VAR(prop_val.ival, INT);
+        case PropertyReal:
+            return MK_FLT(prop_val.rval);
+        case PropertyString:
+            return MK_STR(alloc_memory_region_str(vm, prop_val.str));
+    }
+}
+
+void get_property_string(vm_state_t* vm)
+{
+    var_t id = pop_stack(vm);
+    if (VAR_TYPE(id) != STR)
+        return;
+    char name_buf[MAX_PROPERTY_LEN];
+    vm_read_str(vm, id, name_buf, MAX_PROPERTY_LEN);
+
+    var_t prop = get_property_var(vm, name_buf);
+    if (VAR_TYPE(prop) != STR)
+    {
+        trace_log(LOG_WARNING, "Invalid scripting property : '%s'\n", id);
+
+        unsigned obj = alloc_memory_region(vm, 1);
+        vm->mem_regions[obj].base[0] = MK_VAR(0, INT);
+
+        push_stack(vm, MK_STR(obj));
+    }
+    else
+        push_stack(vm, prop);
+}
+void get_property_int(vm_state_t* vm)
+{
+    var_t id = pop_stack(vm);
+    if (VAR_TYPE(id) != STR)
+        return;
+    char name_buf[MAX_PROPERTY_LEN];
+    vm_read_str(vm, id, name_buf, MAX_PROPERTY_LEN);
+
+    var_t prop = get_property_var(vm, name_buf);
+    if (VAR_TYPE(prop) != INT)
+    {
+        trace_log(LOG_WARNING, "Invalid scripting property : '%s'\n", id);
+
+        push_stack(vm, MK_VAR(0, INT));
+    }
+    else
+        push_stack(vm, prop);
+}
+void get_property_real(vm_state_t* vm)
+{
+    var_t id = pop_stack(vm);
+    if (VAR_TYPE(id) != STR)
+        return;
+    char name_buf[MAX_PROPERTY_LEN];
+    vm_read_str(vm, id, name_buf, MAX_PROPERTY_LEN);
+
+    var_t prop = get_property_var(vm, name_buf);
+    if (VAR_TYPE(prop) != FLOAT)
+    {
+        trace_log(LOG_WARNING, "Invalid scripting property : '%s'\n", id);
+
+        push_stack(vm, MK_FLT(0.0f));
+    }
+    else
+        push_stack(vm, prop);
+}
+
 void init_scripting_syscalls(vm_state_t *vm)
 {
-    register_syscall(vm, 0x80, create_bullet_syscall);
-    register_syscall(vm, 0x81, get_frame_syscall);
-    register_syscall(vm, 0x82, player_pos_syscall);
-    register_syscall(vm, 0x83, update_motion_syscall);
-    register_syscall(vm, 0x84, load_music_syscall);
-    register_syscall(vm, 0x85, play_music_syscall);
-    register_syscall(vm, 0x86, load_spritesheet_syscall);
-    register_syscall(vm, 0x87, load_sprite_id_syscall);
-    register_syscall(vm, 0x88, draw_sprite_syscall);
-    register_syscall(vm, 0x89, draw_animated_sprite_syscall);
-    register_syscall(vm, 0x8A, easing_syscall);
-    register_syscall(vm, 0x8B, get_obj3d_syscall);
-    register_syscall(vm, 0x8C, update_obj3d_syscall);
-    register_syscall(vm, 0x8D, create_obj3d_syscall);
-    register_syscall(vm, 0x8E, load_texture_syscall);
-    register_syscall(vm, 0x8F, load_emitter_syscall);
-    register_syscall(vm, 0x90, register_entity_syscall);
-    register_syscall(vm, 0x91, update_entity_syscall);
+    vm_register_syscall(vm, 0x80, create_bullet_syscall);
+    vm_register_syscall(vm, 0x81, get_frame_syscall);
+    vm_register_syscall(vm, 0x82, player_pos_syscall);
+    vm_register_syscall(vm, 0x83, update_motion_syscall);
+    vm_register_syscall(vm, 0x84, load_music_syscall);
+    vm_register_syscall(vm, 0x85, play_music_syscall);
+    vm_register_syscall(vm, 0x86, load_spritesheet_syscall);
+    vm_register_syscall(vm, 0x87, load_sprite_id_syscall);
+    vm_register_syscall(vm, 0x88, draw_sprite_syscall);
+    vm_register_syscall(vm, 0x89, draw_animated_sprite_syscall);
+    vm_register_syscall(vm, 0x8A, easing_syscall);
+    vm_register_syscall(vm, 0x8B, get_obj3d_syscall);
+    vm_register_syscall(vm, 0x8C, update_obj3d_syscall);
+    vm_register_syscall(vm, 0x8D, create_obj3d_syscall);
+    vm_register_syscall(vm, 0x8E, load_texture_syscall);
+    vm_register_syscall(vm, 0x8F, load_emitter_syscall);
+    vm_register_syscall(vm, 0x90, register_entity_syscall);
+    vm_register_syscall(vm, 0x91, update_entity_syscall);
+    vm_register_syscall(vm, 0x92, get_property_string);
+    vm_register_syscall(vm, 0x93, get_property_int);
+    vm_register_syscall(vm, 0x94, get_property_real);
 }

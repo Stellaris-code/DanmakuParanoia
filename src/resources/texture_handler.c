@@ -26,7 +26,6 @@ SOFTWARE.
 #include "texture_handler.h"
 
 #define MAX_SPRITESHEETS  255
-#define MAX_SPRITE_FRAMES 4096
 #define MAX_REGISTERED_TEXTURES 255
 
 #include <assert.h>
@@ -45,7 +44,7 @@ typedef struct registered_texture_t
 static int spritesheet_count = 0;
 static registered_texture_t spritesheet_array[MAX_SPRITESHEETS];
 
-static int sprite_frame_count = 0;
+int sprite_frame_count = 0;
 sprite_frame_t sprite_frame_array[MAX_SPRITE_FRAMES];
 
 static registered_texture_t registered_textures[MAX_REGISTERED_TEXTURES];
@@ -87,6 +86,12 @@ sprite_frame_id_t load_sprite_frame(spritesheet_id_t sprsht, rect_t tex_rec)
         return (spritesheet_id_t)-1;
     }
 
+    // half pixel correction
+    //tex_rec.x += 0.5;
+    //tex_rec.y += 0.5;
+    //tex_rec.w += 0.5;
+    //tex_rec.h += 0.5;
+
     sprite_frame_array[sprite_frame_count].texture = sht_tex;
     sprite_frame_array[sprite_frame_count].spritesheet_rect = tex_rec;
 
@@ -109,13 +114,19 @@ void texture_handler_cleanup()
     for (int i = 0; i < MAX_REGISTERED_TEXTURES; ++i)
     {
         if (registered_textures[i].tex.id)
+        {
             unload_texture(registered_textures[i].tex);
+            registered_textures[i].tex.id = 0;
+        }
     }
+
+    spritesheet_count = 0;
+    sprite_frame_count = 0;
 }
 
 void init_texture_handler()
 {
-    register_cleanup(texture_handler_cleanup);
+    register_cleanup(texture_handler_cleanup, GamestateEnd);
 }
 
 texture_id_t register_texture(texture_t tex, const char *key)
@@ -153,4 +164,14 @@ spritesheet_id_t get_spritesheet(const char *key)
     trace_log(LOG_WARNING, "Spritesheet '%s' not found", key);
 
     return (spritesheet_id_t)-1;
+}
+
+void release_texture(texture_id_t id)
+{
+    assert(id < MAX_REGISTERED_TEXTURES && id != INVALID_TEXTURE_ID);
+
+    if (!registered_textures[id].tex.id)
+        return;
+    unload_texture(registered_textures[id].tex);
+    registered_textures[id].tex.id = 0;
 }

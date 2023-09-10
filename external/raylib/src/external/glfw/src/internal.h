@@ -194,6 +194,9 @@ typedef void (APIENTRY * PFN_vkVoidFunction)(void);
  #error "No supported window creation API selected"
 #endif
 
+#include "egl_context.h"
+#include "osmesa_context.h"
+
 // Constructs a version number string from the public header macros
 #define _GLFW_CONCAT_VERSION(m, n, r) #m "." #n "." #r
 #define _GLFW_MAKE_VERSION(m, n, r) _GLFW_CONCAT_VERSION(m, n, r)
@@ -240,10 +243,14 @@ struct _GLFWerror
 struct _GLFWinitconfig
 {
     GLFWbool      hatButtons;
+    int           angleType;
     struct {
         GLFWbool  menubar;
         GLFWbool  chdir;
     } ns;
+    struct {
+        GLFWbool  xcbVulkanSurface;
+    } x11;
 };
 
 // Window configuration
@@ -266,6 +273,7 @@ struct _GLFWwndconfig
     GLFWbool      maximized;
     GLFWbool      centerCursor;
     GLFWbool      focusOnShow;
+    GLFWbool      mousePassthrough;
     GLFWbool      scaleToMonitor;
     struct {
         GLFWbool  retina;
@@ -345,9 +353,9 @@ struct _GLFWcontext
     int                 robustness;
     int                 release;
 
-    PFNGLGETSTRINGIPROC GetStringi;
+    PFNGLGETSTRINGIPROC  GetStringi;
     PFNGLGETINTEGERVPROC GetIntegerv;
-    PFNGLGETSTRINGPROC  GetString;
+    PFNGLGETSTRINGPROC   GetString;
 
     _GLFWmakecontextcurrentfun  makeCurrent;
     _GLFWswapbuffersfun         swapBuffers;
@@ -359,9 +367,9 @@ struct _GLFWcontext
     // This is defined in the context API's context.h
     _GLFW_PLATFORM_CONTEXT_STATE;
     // This is defined in egl_context.h
-    _GLFW_EGL_CONTEXT_STATE;
+    _GLFWcontextEGL egl;
     // This is defined in osmesa_context.h
-    _GLFW_OSMESA_CONTEXT_STATE;
+    _GLFWcontextOSMesa osmesa;
 };
 
 // Window and context structure
@@ -376,8 +384,10 @@ struct _GLFWwindow
     GLFWbool            autoIconify;
     GLFWbool            floating;
     GLFWbool            focusOnShow;
+    GLFWbool            mousePassthrough;
     GLFWbool            shouldClose;
     void*               userPointer;
+    GLFWbool            doublebuffer;
     GLFWvidmode         videoMode;
     _GLFWmonitor*       monitor;
     _GLFWcursor*        cursor;
@@ -399,23 +409,23 @@ struct _GLFWwindow
     _GLFWcontext        context;
 
     struct {
-        GLFWwindowposfun        pos;
-        GLFWwindowsizefun       size;
-        GLFWwindowclosefun      close;
-        GLFWwindowrefreshfun    refresh;
-        GLFWwindowfocusfun      focus;
-        GLFWwindowiconifyfun    iconify;
-        GLFWwindowmaximizefun   maximize;
-        GLFWframebuffersizefun  fbsize;
+        GLFWwindowposfun          pos;
+        GLFWwindowsizefun         size;
+        GLFWwindowclosefun        close;
+        GLFWwindowrefreshfun      refresh;
+        GLFWwindowfocusfun        focus;
+        GLFWwindowiconifyfun      iconify;
+        GLFWwindowmaximizefun     maximize;
+        GLFWframebuffersizefun    fbsize;
         GLFWwindowcontentscalefun scale;
-        GLFWmousebuttonfun      mouseButton;
-        GLFWcursorposfun        cursorPos;
-        GLFWcursorenterfun      cursorEnter;
-        GLFWscrollfun           scroll;
-        GLFWkeyfun              key;
-        GLFWcharfun             character;
-        GLFWcharmodsfun         charmods;
-        GLFWdropfun             drop;
+        GLFWmousebuttonfun        mouseButton;
+        GLFWcursorposfun          cursorPos;
+        GLFWcursorenterfun        cursorEnter;
+        GLFWscrollfun             scroll;
+        GLFWkeyfun                key;
+        GLFWcharfun               character;
+        GLFWcharmodsfun           charmods;
+        GLFWdropfun               drop;
     } callbacks;
 
     // This is defined in the window API's platform.h
@@ -426,7 +436,7 @@ struct _GLFWwindow
 //
 struct _GLFWmonitor
 {
-    char*           name;
+    char            name[128];
     void*           userPointer;
 
     // Physical dimensions in millimeters.
@@ -487,7 +497,7 @@ struct _GLFWjoystick
     int             buttonCount;
     unsigned char*  hats;
     int             hatCount;
-    char*           name;
+    char            name[128];
     void*           userPointer;
     char            guid[33];
     _GLFWmapping*   mapping;
@@ -533,6 +543,7 @@ struct _GLFWlibrary
     _GLFWmonitor**      monitors;
     int                 monitorCount;
 
+    GLFWbool            joysticksInitialized;
     _GLFWjoystick       joysticks[GLFW_JOYSTICK_LAST + 1];
     _GLFWmapping*       mappings;
     int                 mappingCount;
@@ -581,9 +592,9 @@ struct _GLFWlibrary
     // This is defined in the platform's joystick.h
     _GLFW_PLATFORM_LIBRARY_JOYSTICK_STATE;
     // This is defined in egl_context.h
-    _GLFW_EGL_LIBRARY_CONTEXT_STATE;
+    _GLFWlibraryEGL egl;
     // This is defined in osmesa_context.h
-    _GLFW_OSMESA_LIBRARY_CONTEXT_STATE;
+    _GLFWlibraryOSMesa osmesa;
 };
 
 // Global state shared between compilation units of GLFW
@@ -626,6 +637,8 @@ void _glfwPlatformSetGammaRamp(_GLFWmonitor* monitor, const GLFWgammaramp* ramp)
 void _glfwPlatformSetClipboardString(const char* string);
 const char* _glfwPlatformGetClipboardString(void);
 
+GLFWbool _glfwPlatformInitJoysticks(void);
+void _glfwPlatformTerminateJoysticks(void);
 int _glfwPlatformPollJoystick(_GLFWjoystick* js, int mode);
 void _glfwPlatformUpdateGamepadGUID(char* guid);
 
@@ -674,12 +687,17 @@ float _glfwPlatformGetWindowOpacity(_GLFWwindow* window);
 void _glfwPlatformSetWindowResizable(_GLFWwindow* window, GLFWbool enabled);
 void _glfwPlatformSetWindowDecorated(_GLFWwindow* window, GLFWbool enabled);
 void _glfwPlatformSetWindowFloating(_GLFWwindow* window, GLFWbool enabled);
+void _glfwPlatformSetWindowMousePassthrough(_GLFWwindow* window, GLFWbool enabled);
 void _glfwPlatformSetWindowOpacity(_GLFWwindow* window, float opacity);
 
 void _glfwPlatformPollEvents(void);
 void _glfwPlatformWaitEvents(void);
 void _glfwPlatformWaitEventsTimeout(double timeout);
 void _glfwPlatformPostEmptyEvent(void);
+
+EGLenum _glfwPlatformGetEGLPlatform(EGLint** attribs);
+EGLNativeDisplayType _glfwPlatformGetEGLNativeDisplay(void);
+EGLNativeWindowType _glfwPlatformGetEGLNativeWindow(_GLFWwindow* window);
 
 void _glfwPlatformGetRequiredInstanceExtensions(char** extensions);
 int _glfwPlatformGetPhysicalDevicePresentationSupport(VkInstance instance,

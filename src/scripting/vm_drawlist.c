@@ -12,7 +12,7 @@ typedef struct vm_sprite_entry_t
 
 typedef struct vm_anim_entry_t
 {
-    animation_t anim;
+    frame_animation_t anim;
     vector2d_t pos, size;
     float angle;
 } vm_anim_entry_t;
@@ -26,7 +26,7 @@ static void draw_anim_callback(void* ptr)
 {
     vm_anim_entry_t* anim = ptr;
 
-    draw_animation(&anim->anim, anim->pos, anim->size, anim->angle);
+    draw_frame_animation(&anim->anim, anim->pos, anim->size, anim->angle);
 }
 
 static void draw_sprite_callback(void* ptr)
@@ -36,7 +36,7 @@ static void draw_sprite_callback(void* ptr)
     draw_sprite(sprite->id, sprite->pos, sprite->size, sprite->angle, COL_WHITE);
 }
 
-void vm_drawlist_register_anim(const animation_t *anim, vector2d_t pos, vector2d_t size, float angle, int zorder)
+void vm_drawlist_register_anim(const frame_animation_t *anim, vector2d_t pos, vector2d_t size, float angle, int zorder)
 {
     if (anim_count > MAX_VM_ANIM_DRAWLIST_SIZE)
         return;

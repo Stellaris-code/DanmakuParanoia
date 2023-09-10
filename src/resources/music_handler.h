@@ -3,10 +3,10 @@
 
 #include <stdint.h>
 
-#define INVALID_MUSIC_ID 0xff
+#define INVALID_MUSIC_ID 0xffffffff
 #define MAX_MUSIC_ENTRIES 256
 
-typedef uint8_t music_id_t;
+typedef uint32_t music_id_t;
 
 extern music_id_t current_bgm;
 

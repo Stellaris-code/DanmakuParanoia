@@ -12,32 +12,29 @@
 #include "raylib.h"
 #include "rlgl.h"
 
-#include "gameplay/bullet/bullet.h"
-#include "gameplay/player.h"
-#include "gameplay/gamestate.h"
-#include "gameplay/entity.h"
-#include "collision/collision.h"
-
-#include "resources/texture_handler.h"
-#include "resources/music_handler.h"
-#include "draw/draw.h"
-#include "draw/vfx.h"
-#include "draw/animation.h"
-#include "draw/shader_fx.h"
-#include "draw/drawlist.h"
-#include "draw/zorder.h"
-#include "draw/particles.h"
-#include "bckgs/3d_obj.h"
-#include "bckgs/skybox.h"
-#include "scripting/syscalls.h"
-#include "scripting/vm_drawlist.h"
+#include "engine/engine.h"
 
 #include "math/vector.h"
 
-#include "ui/hud.h"
-#include "utils/timed_action.h"
 #include "utils/utils.h"
+#include "utils/constants.h"
+#include "utils/benchmark.h"
 #include "sys/cleanup.h"
+#include "sys/log.h"
+#include "sys/support.h"
+
+#include "scripting/properties.h"
+#include "animation/asl_handler.h"
+#include "draw/particles.h"
+#include "utils/timed_action.h"
+#include "draw/vfx.h"
+#include "bckgs/skybox.h"
+#include "bckgs/3d_obj.h"
+
+#include "engine/engine.h"
+#include "gameplay/gamestate.h"
+
+#include "thread_support.h"
 
 #include "vm.h"
 
@@ -48,13 +45,38 @@
 #include <assert.h>
 #include <time.h>
 
-#define TARGET_FPS 60
-
 // CONVENTION :
 // angles in radians
 // distance unit : pixel
 
+// TODOs majeurs :
+// TODO TODO TODO : fix that ugly "global_state" thing
+// Draw hitbox du joueur au dessus des bullet
+// Ouvrir issue sur Raylib ligne 196 text.c : calloc au lieu de RL_CALLOC
+// Regarder si l'issue avec LoadOBJ a été résolue
+// Error handling in scripting VM
+// Améliorer la gestion des ajustement de viewport ('translate_viewport' et compagnie)
+// Utiliser un système de gamestates
+// Ajouter de l'error handling à l'ASL
+// Script : a way to attach coroutines to bullets
+// TODO : custom assert()
+// TODO : measure if fast_sincos is accurate enough for pixel-perfect collisions
+// TODO : moyen d'afficher les hitbox pour le debug
+// TODO : cross platform simple SIMD operations
+// TODO : investigate stuttery bullet motion
+// TODO : measure actual GPU time
+// TODO : script tasks (coroutines)
+// TODO : implement 'eql', 'lel', 'gtl'... all binops operating on local variables in the compiler and assembler
+// TODO : remplacer sincos dans motion_t par des rotations par nombres complexes
+// TODO : 'for (int i = 0; i < (int)(360/4/1.5); ++i)' causes VM error (invalid cmp types)
+// TODO : virer tous les fast_sincos immondes
+// Some texture atlas bleeding (texel coordinates?)
+// Est-ce que la méthode de Wait de fin de frame est optimale? busy loop ou sleep?
+// Ajouter une console ?
+// Ajouter un système de stats par res_pool
+// dans syscalls.c : // TODO : use something better than ugly extern references
 
+/*
 void spawn_vfx_2(void* arg);
 void spawn_vfx_1(void* arg)
 {
@@ -93,183 +115,13 @@ void spawn_vfx_2(void* arg)
     foo = !foo;
 
     offset += 200.f;
-}
-
-void start_transition(void* arg)
-{
-    enable_shader(*(int*)arg, 2.0f, ABOVEALL_ZORDER, true);
-}
-
-vm_state_t* test_vm;
-int death_frame;
-float death_time;
-float frame_time;
-sprite_frame_id_t sprite;
-sprite_frame_id_t shard_sprite;
-sprite_frame_id_t particles_sheet;
-void reset();
-void handle_events()
-{
-    if (IsKeyPressed(KEY_Q))
-    {
-        reset();
-    }
-
-    if (IsKeyPressed(KEY_SPACE))
-    {
-        DrawText(TextFormat("Mouse Pos : %i, %i", GetMouseX(), GetMouseY()), 200, 40, 20, BLACK);
-
-        for (int i = 0; i < 0x1000*25; ++i)
-        {
-            bullet_t bullet = {0};
-            bullet.type = Circle;
-            bullet.sprite = sprite;
-            bullet.motion.direction_angle = M_PI_4;
-            bullet.motion.velocity = 400.f;
-            bullet.motion.angular_velocity = 4.f;
-            bullet.motion.relative_x = 400.f;
-            bullet.motion.relative_y = 225.f;
-            circle_info_t info = {0};
-            info.radius = 10.f;
-            info.hitbox_radius = 5.f;
-
-            register_bullet(bullet, &info);
-        }
-    }
-    if (IsKeyPressed(KEY_B))
-    {
-        DrawText(TextFormat("Mouse Pos : %i, %i", GetMouseX(), GetMouseY()), 200, 40, 20, BLACK);
-
-        for (int i = 0; i < 0x1; ++i)
-        {
-            bullet_t bullet = {0};
-            bullet.type = Rect;
-            bullet.sprite = shard_sprite;
-            bullet.motion.direction_angle = M_PI_4;
-            //bullet.motion.velocity = 400.f;
-            //bullet.motion.angular_acceleration = 4.f;
-            //bullet.motion.rotational_speed = 50.f/20.f;
-            bullet.motion.rotation = M_PI_4;
-            bullet.motion.relative_x = 400.f;
-            bullet.motion.relative_y = 225.f;
-            rect_info_t info = {0};
-            info.width = 16.f;
-            info.height = 18.f;
-            info.hitbox_width = 6.f;
-            info.hitbox_height = 12.f;
-
-            bullet_t* root_ptr = register_bullet(bullet, &info);
-
-            bullet_t satellite = {0};
-            satellite.type = Circle;
-            satellite.sprite = sprite;
-            satellite.motion.direction_angle = M_PI_2; // looking up
-            satellite.motion.velocity = 50.f;
-            satellite.motion.angular_velocity = 50.f/20.f; // omega=V/R in radians
-            satellite.motion.relative_x = 20.f;
-            satellite.motion.relative_y = 00.f;
-            satellite.motion.root = &root_ptr->motion;
-            circle_info_t satellite_info = {0};
-            satellite_info.radius = 10.f;
-
-            //register_bullet(satellite, &satellite_info);
-
-            // another one
-            satellite = (bullet_t){0};
-            satellite.type = Circle;
-            satellite.sprite = sprite;
-            satellite.motion.direction_angle = M_PI_2; // looking up
-            satellite.motion.velocity = 140.f;
-            satellite.motion.angular_velocity = 140.f/40.f; // omega=V/R in radians
-            satellite.motion.relative_x = 40.f;
-            satellite.motion.relative_y = 00.f;
-            satellite.motion.root = &root_ptr->motion;
-            satellite_info = (circle_info_t){0};
-            satellite_info.radius = 10.f;
-
-            //register_bullet(satellite, &satellite_info);
-        }
-    }
-    //if (false&&IsKeyPressed(KEY_S))
-    {
-        float vm_start_time = GetTime();
-        vm_reset(test_vm);
-        vm_run(test_vm);
-        if (test_vm->allocated_region_count >= MAX_MEMORY_REGIONS/2)
-            vm_run_gc(test_vm);
-        global_state.vm_frame_time = GetTime() - vm_start_time;
-    }
-
-    if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
-    {
-        DrawCircle(GetMouseX(), GetMouseY(), 10, GREEN);
-        global_state.player.pos.x = GetMouseX();
-        global_state.player.pos.y = GetMouseY();
-    }
-
-    if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-    {
-        SPAWN_VFX(0, screen_shake, 10, 10, 120.f, 0.5f);
-    }
-
-    if (IsKeyPressed(KEY_F))
-    {
-        emitter_t* emitter = create_emitter();
-        emitter->lifetime = 5.0f;
-        emitter->archetype_count = 1;
-        emitter->archetype_strategy = LOOP;
-        emitter->particles_sheet = particles_sheet;
-        emitter->zorder = BELOWALL_ZORDER;
-        emitter->blend_mode = BlendAdditive;
-        emitter->frequency = 5.0f;
-        emitter->burst_size = 2;
-        emitter->motion = (motion_data_t){0};
-        emitter->motion.relative_x = global_state.game_area_size.x/2.0;
-        emitter->motion.relative_y = 100.0;
-        emitter->motion_randomness.direction_angle = 2.f*M_PI;
-        emitter->motion_randomness.velocity = 20.f;
-
-        particle_t particle = {0};
-        particle.initial_color = COL_GRAY; particle.initial_color.a = 200;
-        particle.final_color = COL_RED; particle.final_color.a = 0;
-        particle.initial_scale = (vector2d_t){0.25f, 0.25f};
-        particle.final_scale = (vector2d_t){0.25f, 0.25f};
-        particle.lifetime = 2.f;
-        particle.motion.rotational_speed = M_PI;
-        particle.motion.velocity = 20.f;
-        particle.motion.max_rot = particle.motion.max_accel = particle.motion.max_speed =
-            particle.motion.max_angular = +INFINITY;
-        rect_t sprite_rect;
-        sprite_rect.x = 8*512; sprite_rect.y = 8*512;
-        sprite_rect.w = sprite_rect.h = 512;
-        particle.spriteframe = load_sprite_frame(particles_sheet, sprite_rect);
-
-        emitter->particle_archetypes[0] = particle;
-    }
-}
+*/
 
 void compile_scripts()
 {
-    system("\"D:/Compiegne C++/Projets C++/DanPaCompiler/DanPaCompiler/build/DanPaCompiler.exe\"");
-    system("\"D:/Compiegne C++/Projets C++/DanPaAssembler/build/DanPaAssembler.exe\"");
-}
-
-void reset()
-{
-    if (current_bgm != INVALID_MUSIC_ID)
-        stop_music(current_bgm);
-
-    clear_bullets();
-    cleanup_obj3ds();
-    clear_entities();
-    clear_particles();
-    global_state.current_frame = global_state.current_frame = 0;
-    global_state.player_dead = 0;
-    global_state.player.inactive = false;
-    global_state.player.pos.x = 400;
-    global_state.player.pos.y = 450 - 2;
-    vm_clear(test_vm);
-    vm_run_init(test_vm);
+    system("\"\"../DanPaCompiler/build-DanPaCompiler_local-Desktop_Qt_6_2_2_MinGW_64_bit-Debug/DanPaCompiler.exe\" \"build-DanmakuParanoia-master-Desktop_Qt_6_2_2_MinGW_64_bit-Debug/script.dps\" \"script.asm\"\"");
+    system("\"\"../build-DanPaAssembler-Desktop_Qt_6_2_2_MinGW_64_bit-Debug/DanPaAssembler.exe\""
+           " \"C:/Users/Ya2nb/Travail/C++/DanPaGit/Projets C++/build-DanmakuParanoia-master-Desktop_Qt_6_2_2_MinGW_64_bit-Debug/script.asm\" \"build-DanmakuParanoia-master-Static-Debug/in.bin\" \"");
 }
 
 // TODO : warn about issue if .obj file normals are not written
@@ -280,194 +132,78 @@ int main(void)
 
     srand(time(0));
 
-    float timescale = 1.0f;
-
     compile_scripts();
 
-    test_vm = create_vm("in.bin");
-    init_scripting_syscalls(test_vm);
-    vm_run_init(test_vm);
+    //SetConfigFlags(FLAG_MSAA_4X_HINT);
+    //SetConfigFlags(FLAG_VSYNC_HINT);
 
-    global_state.player.focused_speed = 80.0f;
-    global_state.player.unfocused_speed = 300.0f;
-    global_state.player.hitbox_radius = 2.0f;
-    global_state.player.pos.x = 400;
-    global_state.player.pos.y = 450 - 2;
+#if 1
+    unsigned res_x = 1200 / 2;
+    unsigned res_y = 800;
+#else
+    unsigned res_x = 1920;//2560;
+    unsigned res_y = 1080;//1440;
+#endif
 
-    SetConfigFlags(FLAG_MSAA_4X_HINT);
-    InitWindow(800, 450, "raylib [text] example - 弾幕パラノイア");
+    SetTraceLogLevel(LOG_WARNING);
 
+    //InitWindow(res_x, res_y, "弾幕パラノイア");
+    InitWindow(res_x, res_y, "th21.37 - Imperishable Nöt");
     InitAudioDevice();
 
     SetTargetFPS(TARGET_FPS);               // Set our game to run at 60 frames-per-second
+    //SetTargetFPS(0);
 
-    global_state.game_area_size = (ivector2d_t){800, 450};
+    engine_init(&engine);
 
-    Sound death_sound = LoadSound("resources/sfx/deathsound.mp3");
+    gameplay_state_t gamestate;
+    gamestate.base.exit = gamestate_exit;
+    gamestate.base.init = gamestate_init;
+    gamestate.base.update = gamestate_update;
+    gamestate.base.render = gamestate_render;
 
+    engine.render_area_size = (ivector2d_t){res_x, res_y};
+    gamestate.game_area_size = engine.render_area_size;
+    global_state.game_area_size = engine.render_area_size; // TODO UGLY GET RID OF "global_state"
+
+    init_timed_actions();
     init_music_handler();
+    init_sfx_handler();
     init_texture_handler();
     init_skybox();
     init_obj3ds();
     init_vfx();
     init_shader_fx();
     init_textures();
-    init_player();
     init_particle_system();
+    init_properties();
+    init_asl_scripting();
 
-    spritesheet_id_t sheet   = load_spritesheet("resources/spritesheets/th06spritesheet_alpha.png", "danmaku-sheet-1");
-    rect_t rect = {.x = 364, .y = 62, .w = 16, .h = 16};
-    sprite = load_sprite_frame(sheet, rect);
-    rect = (rect_t){.x = 380, .y = 95, .w = 16, .h = 18};
-    shard_sprite = load_sprite_frame(sheet, rect);
-    particles_sheet = load_spritesheet("resources/spritesheets/particles.png", "particles-sheet");
+    // TODO : make it appear in a graphical popup message (animation: perhaps one that expands?)
+    const char* err_msg;
+    if ((err_msg = test_cpu_os_support()) != NULL)
+    {
+        trace_log(LOG_FATAL, "CPU/OS error : %s\nAborting", err_msg);
+        return -1;
+    }
+    trace_log(LOG_INFO, "Available hardware threads : %d", thrd_hardware_threads());
 
-    SPAWN_VFX(0, sheared_rectangle,
-              (vector2d_t){200.f, 000.f}, COL_PINK, 20.f, -0.25f, 0.0f, 1000.f, 1.f, false);
-    SPAWN_VFX(0, sheared_rectangle,
-              (vector2d_t){800.f, -500.f}, COL_PINK, 20.f, -0.25f, 0.0f, 1000.f, 1.2f, false);
-    SPAWN_VFX(0, sheared_rectangle,
-              (vector2d_t){400.f, -1500.f}, COL_PINK, 30.f, -0.25f, 0.0f, 2000.f, 1.5f, false);
-
-    Camera camera = { { 1.0f, 1.0f, 1.0f }, { 4.0f, 1.0f, 4.0f }, { 0.0f, 1.0f, 0.0f }, 40.0f, 0 };
-    SetCameraMode(camera, CAMERA_FIRST_PERSON);
-
-    load_skybox("resources/skybox.png");
-
-    int cool_id = load_shader("resources/shaders/death_shader.fs", NormalShader);
-    int transition_shader = load_shader("resources/shaders/circle_transition.fs", NormalShader);
-    int grayscale_shader = load_shader("resources/shaders/grayscale.fs", PostFXShader);
+    engine_push_state(&engine, &gamestate.base);
 
     //--------------------------------------------------------------------------------------
 
-    // Main game loop
-    while (!WindowShouldClose())    // Detect window close button or ESC key
-    {
-        // Update
-        //----------------------------------------------------------------------------------
-        // TODO: Update your variables here
-        //----------------------------------------------------------------------------------
+    engine_run_loop(&engine);
 
-        float frame_start_time = GetTime();
-        //const float dt = GetFrameTime();
-        const float dt = (1.0f/TARGET_FPS) * timescale; // fixed timestep
-        frame_time = dt;
+    engine_cleanup(&engine);
 
-        float collision_start_time = GetTime();
-        bool player_collision = test_player_collision(&global_state.player);
-        global_state.collision_frame_time = GetTime() - collision_start_time;
-
-        float game_logic_start_time = GetTime();
-        vm_drawlist_reset();
-        update_music_streams();
-        timed_actions_update(dt);
-        vfx_update(dt);
-        update_shader_fx(dt);
-        update_player(dt, &global_state.player);
-        update_bullets(dt);
-        UpdateCamera(&camera);
-        global_state.game_logic_frame_time = GetTime() - game_logic_start_time;
-
-        float particles_start_time = GetTime();
-        update_particle_system(dt);
-        global_state.particles_frame_time = GetTime() - particles_start_time;
-
-        if (!global_state.player_dead && player_collision)
-        {
-            //TakeScreenshot("death.png");
-
-            global_state.player_dead = true;
-            death_frame = global_state.current_frame;
-            death_time = GetTime();
-            global_state.player.inactive = true;
-            schedule_action(1.20f, start_transition, &transition_shader);
-            schedule_action(2.25f, reset, NULL);
-            PlaySound(death_sound);
-
-            enable_shader(cool_id, 2.0f, UNDER_PLAYER_ZORDER, false);
-            enable_shader(grayscale_shader, 1.0f, BELOWALL_ZORDER, true);
-
-            SPAWN_VFX(0, screen_shake, 35, 35, 160.f, 0.5f);
-        }
-
-        color_t bg_color = {0xff, 0xff, 0xff, 0xff};
-        if (global_state.player_dead)
-        {
-            if (current_bgm != INVALID_MUSIC_ID)
-                set_music_volume(current_bgm, 1.0f - fminf((global_state.current_frame-death_frame)/50.f, 1.0f));
-        }
-        Color rl_bgcol;
-        rl_bgcol.r = bg_color.r; rl_bgcol.g = bg_color.g; rl_bgcol.b = bg_color.b; rl_bgcol.a = bg_color.a;
-
-        // Draw
-        //----------------------------------------------------------------------------------
-        BeginDrawing();
-
-        ClearBackground(rl_bgcol);
-
-        float bckg_start_time = GetTime();
-        BeginMode3D(camera);
-            draw_skybox();
-            draw_all_obj3d();
-        EndMode3D();
-        global_state.bckg_frame_time = GetTime() - bckg_start_time;
-
-        vfx_draw();
-        draw_shader_fx();
-
-        if (global_state.player_dead && (global_state.current_frame-death_frame)>60)
-        {
-            translate_viewport((vector3d_t){0.0, -expf((global_state.current_frame-death_frame-60)/10.f), 0.0});
-        }
-
-        handle_events();
-
-        draw_bullets();
-        draw_particles();
-
-        if (!global_state.player_dead)
-            draw_player(&global_state.player);
-
-        // to handle z-ordered rendering
-        float render2d_start_time = GetTime();
-        sort_drawlist();
-        commit_drawlist();
-        global_state.render2d_frame_time = GetTime() - render2d_start_time;
-
-        // HUD stuff : ignore previous transforms
-        reset_viewport();
-
-        draw_hud();
-
-        global_state.busy_frame_time = GetTime() - frame_start_time;
-
-        /*
-        int id = test_collision(GetMouseX(), GetMouseY(), 10);
-        if (id)
-        {
-            DrawText(FormatText("Collision test : %d", id), 10, 260, 20, BLACK);
-        }
-        */
-
-        rect_t game_area_rect;
-        game_area_rect.x = game_area_rect.y = 0;
-        game_area_rect.w = global_state.game_area_size.x;
-        game_area_rect.h = global_state.game_area_size.y;
-
-        EndDrawing();
-        //----------------------------------------------------------------------------------
-
-        ++global_state.current_frame;
-    }
-
-    do_cleanup();
+    do_cleanup(AppEnd);
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
+    CloseAudioDevice();
+
     CloseWindow();        // Close window and OpenGL context
     //--------------------------------------------------------------------------------------
-
-    cleanup_vm(test_vm);
 
     return 0;
 }

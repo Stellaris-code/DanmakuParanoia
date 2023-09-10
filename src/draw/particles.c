@@ -10,6 +10,8 @@
 #include "utils/json.h"
 #include "sys/log.h"
 #include "sys/fs.h"
+#include "sys/cleanup.h"
+#include "sys/alloc.h"
 
 typedef struct particle_instance_info_t
 {
@@ -81,7 +83,7 @@ static void update_emitter(int i, float dt)
     {
         for (unsigned int j = 0; j < emitter_list[i].burst_size; ++j)
         {
-            particle_t* archetype = &emitter_list[i].particle_archetypes[0];
+            particle_t* archetype;
             if (emitter_list[i].archetype_strategy == LOOP)
             {
                 ++emitter_info[i].last_chosen_archetype;
@@ -153,9 +155,16 @@ void update_particle_system(float dt)
     }
 }
 
+void cleanup_particle_system()
+{
+    memset(emitter_alive, 0, MAX_EMITTERS*sizeof(uint8_t));
+    memset(particle_alive, 0, MAX_ALIVE_PARTICLES*sizeof(uint8_t));
+    particle_count = 0;
+}
+
 void init_particle_system()
 {
-
+    register_cleanup(cleanup_particle_system, GamestateEnd);
 }
 
 
@@ -196,7 +205,7 @@ void draw_particles()
     for (int i = 0; i < MAX_EMITTERS; ++i)
     {
         // even if the emitter is dead, continue to draw its particle as long as some remain
-        if (emitter_info[i].particle_count > 0)
+        if (emitter_alive[i] && emitter_info[i].particle_count > 0)
         {
             register_draw_element(&emitter_list[i], draw_emitter_callback, emitter_list[i].zorder);
         }
@@ -288,7 +297,7 @@ emitter_t *load_emitter_from_file(const char *file)
     result = parse_json(json_data, json_len, &context);
     if (!result.accepted)
     {
-        free(json_data);
+        danpa_free(json_data);
         trace_log(LOG_WARNING, "couldn't load JSON particle file '%s' : '%s'", file, result.error.reason);
         return NULL;
     }
@@ -343,9 +352,10 @@ emitter_t *load_emitter_from_file(const char *file)
 
     printf("spawned!\n");
 
+    danpa_free(json_data);
     return emitter;
 
 error:
-    free(json_data);
+    danpa_free(json_data);
     return NULL;
 }

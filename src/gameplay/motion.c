@@ -8,12 +8,27 @@
 #include "utils/utils.h"
 #include "entity.h"
 
-#include <xmmintrin.h>
-
 static const float twopi=6.283185f;
 static const float threehalfpi=4.7123889f;
 static const float pi=3.141593f;
 static const float halfpi=1.570796f;
+
+void motion_simd_load(packed_motion_t* dst, unsigned load_idx, const motion_data_t* src)
+{
+    dst->acceleration[load_idx] = src->acceleration;
+    dst->angular_velocity[load_idx] = src->angular_velocity;
+    dst->rotational_speed[load_idx] = src->rotational_speed;
+    dst->velocity[load_idx] = src->velocity;
+
+    dst->max_speed[load_idx] = src->max_speed;
+
+    dst->direction_angle[load_idx] = src->direction_angle;
+    dst->rotation[load_idx] = src->rotation;
+    dst->dampening[load_idx] = src->dampening;
+
+    dst->relative_x[load_idx] = src->relative_x;
+    dst->relative_y[load_idx] = src->relative_y;
+}
 
 static float fast_cos_32s(float x)
 {
@@ -47,7 +62,6 @@ static void fast_sincos(float angle, float *sin, float *cos){
     }
     *cos=fast_cos_32s(twopi-angle);
     *sin=sinmultiplier*sqrtf(1.f-*cos**cos);
-    return;
 }
 
 void update_motion(float dt, motion_data_t* data)
@@ -57,23 +71,27 @@ void update_motion(float dt, motion_data_t* data)
     data->rotational_speed = MIN(data->max_rot, data->rotational_speed + data->rotational_acceleration*dt);
     data->velocity         = MIN(data->max_speed, (data->velocity + data->acceleration*dt)*(1.0f-data->dampening));
 
-    data->direction_angle  = data->direction_angle + data->angular_velocity*dt;
-    while (data->direction_angle < 0)
-        data->direction_angle = M_PI*2 + data->direction_angle;
-    // clamp the direction angle range
-    while (data->direction_angle > M_PI*2)
-        data->direction_angle -= M_PI*2;
-
+    data->direction_angle += data->angular_velocity*dt;
     data->rotation += data->rotational_speed*dt;
+    data->direction_angle -= floorf(data->direction_angle/(2*M_PI))*(2*M_PI);
+    data->rotation -= floorf(data->rotation/(2*M_PI))*(2*M_PI);
 
-    float movement_x, movement_y;
-    fast_sincos(data->direction_angle, &movement_y, &movement_x);
-    //sincosf(data->direction_angle, &movement_y, &movement_x);
-    movement_x *= data->velocity*dt;
-    movement_y *= data->velocity*dt;
+    if (data->cached_direction_angle != data->direction_angle)
+    {
+        fast_sincos(data->direction_angle, &data->movement_y, &data->movement_x);
+        //sincosf(data->direction_angle, &data->movement_y, &data->movement_x);
+        data->movement_x *= data->velocity;
+        data->movement_y *= data->velocity;
 
-    data->relative_x += movement_x;
-    data->relative_y += movement_y;
+        data->relative_x += data->movement_x*dt;
+        data->relative_y += data->movement_y*dt;
+        data->cached_direction_angle = data->direction_angle;
+    }
+    else
+    {
+        data->relative_x += data->movement_x*dt;
+        data->relative_y += data->movement_y*dt;
+    }
 }
 
 static vector2d_t impl_absolute_pos_depth_check(const motion_data_t* data, int call_depth)

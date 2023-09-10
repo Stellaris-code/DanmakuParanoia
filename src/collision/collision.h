@@ -25,15 +25,16 @@ SOFTWARE.
 #ifndef COLLISION_INFO_H
 #define COLLISION_INFO_H
 
-#include "simd/simd_info.h"
+#include "simd/simd.h"
 #include "gameplay/bullet/bullet_id.h"
 
-//#define MAX_HITBOX_COUNT 0x100000 // ~1M. yeah, I'm a lunatic. thank god for the .bss section by the way
-#define MAX_HITBOX_COUNT 65536
+#define MAX_HITBOX_COUNT 0x400000 // ~4M. yeah, I'm a lunatic. thank god for the .bss section by the way
+//#define MAX_HITBOX_COUNT 65536
 #define INVALID_HITBOX_ID ((hitbox_id_t)-1)
 
 typedef int32_t hitbox_id_t;
 
+_Static_assert(SIMD_ID_PER_REG == SIMD_FLT_PER_REG, "hitbox_id_t has a different size compared to float");
 // AoSoA
 typedef struct packed_rect_col_info
 {
@@ -58,6 +59,9 @@ _Alignas(VECTOR_WIDTH) extern packed_circle_col_info circle_hitboxes[MAX_HITBOX_
 extern int rect_hitbox_index;
 extern int circle_hitbox_index;
 
+// used to skip checking a whole bunch of hitboxes if we know that they are empty
+#define HITBOX_CHUNK_SIZE 1024
+extern unsigned hitbox_chunk_count[(MAX_HITBOX_COUNT/SIMD_FLT_PER_REG) / HITBOX_CHUNK_SIZE];
 
 #define GET_HITBOX_FIELD(type, field, idx) \
     &type##_hitboxes[(idx) / SIMD_FLT_PER_REG].field[(idx) % SIMD_FLT_PER_REG]
@@ -66,11 +70,16 @@ extern int circle_hitbox_index;
     register_hitbox(type##_hitboxes, sizeof(type##_hitboxes[0]), &type##_hitbox_index, id)
 
 #define FREE_HITBOX(type, id) \
-    free_hitbox(type##_hitboxes, sizeof(type##_hitboxes[0]), id)
+    do { \
+    bullet_id_t* id_field = &type##_hitboxes[id/SIMD_FLT_PER_REG].ids[id%SIMD_FLT_PER_REG]; \
+assert(*id_field != INVALID_BULLET_ID); \
+*id_field = INVALID_BULLET_ID; \
+unsigned chunk_id = (id/SIMD_FLT_PER_REG) / HITBOX_CHUNK_SIZE; \
+--hitbox_chunk_count[chunk_id]; \
+    } while (0)
 
 
 hitbox_id_t register_hitbox(void* hitbox_list, unsigned hitbox_len, int* hitbox_index, bullet_id_t id);
-void free_hitbox(void* hitbox_list, unsigned hitbox_len, int hitbox_id);
 
 bullet_id_t test_collision(float pos_x, float pos_y, float hit_radius);
 

@@ -28,6 +28,11 @@ typedef struct irect_t
     int x, y, w, h;
 } irect_t;
 
+typedef struct usrect_t
+{
+    unsigned short x, y, w, h;
+} usrect_t;
+
 static float squared_length(vector2d_t vec)
 {
     return vec.x*vec.x + vec.y*vec.y;

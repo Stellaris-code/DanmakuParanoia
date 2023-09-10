@@ -1,9 +1,10 @@
 #ifndef EASING_H
 #define EASING_H
 
-typedef enum easing_functions
+typedef enum easing_function_enum
 {
-    EaseLinear = 0,
+    EaseConstantUp = 0,
+    EaseLinear,
     EaseInSine,
     EaseOutSine,
     EaseInOutSine,
@@ -34,7 +35,7 @@ typedef enum easing_functions
     EaseInBounce,
     EaseOutBounce,
     EaseInOutBounce
-} easing_functions;
+} easing_function_enum;
 
 typedef float(*easing_function_t)(float);
 
@@ -93,7 +94,7 @@ float easeOutBounce( float t );
 
 float easeInOutBounce( float t );
 
-easing_function_t getEasingFunction( easing_functions function );
-easing_functions strToEasing(const char* str);
+easing_function_t getEasingFunction( easing_function_enum function );
+easing_function_enum strToEasing(const char* str);
 
 #endif // EASING_H

@@ -7,13 +7,13 @@
 #include "gameplay/gamestate.h"
 
 #include "draw/spriteframe.h"
-#include "draw/animation.h"
+#include "draw/frame_animation.h"
 
 #include <raylib.h>
 
 static spritesheet_id_t player_sheet;
-static animation_t anim;
-static animation_t trail_anim;
+static frame_animation_t anim;
+static frame_animation_t trail_anim;
 
 void init_player()
 {
@@ -106,9 +106,9 @@ bool test_player_graze(const player_t* player)
 void draw_player_callback(void* player_ptr)
 {
     const player_t* player = player_ptr;
-    draw_circle(player->pos, 4.0, COL_BLUE);
-    draw_animation(&anim, player->pos, (vector2d_t){32, 32}, 0.0);
-    draw_animation(&trail_anim, (vector2d_t){player->pos.x, player->pos.y+32}, (vector2d_t){32, 32}, 0.0);
+    //draw_circle(player->pos, 4.0, COL_BLUE);
+    draw_frame_animation(&anim, player->pos, (vector2d_t){32, 32}, 0.0);
+    draw_frame_animation(&trail_anim, (vector2d_t){player->pos.x, player->pos.y+32}, (vector2d_t){32, 32}, 0.0);
 }
 
 void draw_player(const player_t *player)

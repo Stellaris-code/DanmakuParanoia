@@ -9,16 +9,22 @@
 
 typedef struct music_t
 {
-    bool loaded;
     Music rl_music;
 } music_t;
 
 static music_t music_entries[MAX_MUSIC_ENTRIES];
+static uint32_t music_count = 0;
 
 music_id_t current_bgm = INVALID_MUSIC_ID;
 
 music_id_t load_music(const char *path)
 {
+    if (music_count >= MAX_MUSIC_ENTRIES)
+    {
+        trace_log(LOG_WARNING, "Too many musics are loaded, couldn't load '%s'\n", path);
+        return INVALID_MUSIC_ID;
+    }
+
     Music rl_music = LoadMusicStream(path);
     if (rl_music.stream.buffer == 0)
     {
@@ -26,83 +32,71 @@ music_id_t load_music(const char *path)
         return INVALID_MUSIC_ID;
     }
 
-    for (int i = 0; i < MAX_MUSIC_ENTRIES; ++i)
-    {
-        if (!music_entries[i].loaded) // free entry
-        {
-            music_entries[i].loaded = true;
-            music_entries[i].rl_music = rl_music;
-            return i;
-        }
-    }
+    uint32_t id = music_count;
+    music_entries[id].rl_music = rl_music;
+    ++music_count;
 
-    trace_log(LOG_WARNING, "Too many musics are loaded, couldn't load '%s'\n", path);
-    return INVALID_MUSIC_ID;
+    return id;
 }
 
 void play_music(music_id_t music)
 {
+    assert(music < music_count);
     music_t entry = music_entries[music];
-    assert(entry.loaded);
 
     PlayMusicStream(entry.rl_music);
 }
 
 void resume_music(music_id_t music)
 {
+    assert(music < music_count);
     music_t entry = music_entries[music];
-    assert(entry.loaded);
 
     ResumeMusicStream(entry.rl_music);
 }
 
 void pause_music(music_id_t music)
 {
+    assert(music < music_count);
     music_t entry = music_entries[music];
-    assert(entry.loaded);
 
     PauseMusicStream(entry.rl_music);
 }
 
 void update_music_streams()
 {
-    for (int i = 0; i < MAX_MUSIC_ENTRIES; ++i)
+    for (uint32_t i = 0; i < music_count; ++i)
     {
-        if (music_entries[i].loaded)
-        {
             UpdateMusicStream(music_entries[i].rl_music);
-        }
     }
 }
 
 void set_music_volume(music_id_t music, float volume)
 {
+    assert(music < music_count);
     music_t entry = music_entries[music];
-    assert(entry.loaded);
 
     SetMusicVolume(entry.rl_music, volume);
 }
 
 void stop_music(music_id_t music)
 {
+    assert(music < music_count);
     music_t entry = music_entries[music];
-    assert(entry.loaded);
 
     StopMusicStream(entry.rl_music);
 }
 
 void cleanup_music_handler()
 {
-    for (int i = 0; i < MAX_MUSIC_ENTRIES; ++i)
+    for (uint32_t i = 0; i < music_count; ++i)
     {
-        if (music_entries[i].loaded)
-        {
-            UnloadMusicStream(music_entries[i].rl_music);
-        }
+        UnloadMusicStream(music_entries[i].rl_music);
     }
+    music_count = 0;
 }
 
 void init_music_handler()
 {
-    register_cleanup(cleanup_music_handler);
+    register_cleanup(cleanup_music_handler, GamestateEnd);
 }
