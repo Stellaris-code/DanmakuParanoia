@@ -1,0 +1,8 @@
+#define printf(fmt, ...) asm("syscall #0x0", fmt,  __VA_ARGS__, __VA_COUNT__)
+#define readint() asm("syscall #0x01":int)
+#define readstr() asm("syscall #0x02":str)
+#define startclock() asm("syscall #0x10")
+#define stopclock() asm("syscall #0x11")
+#define assert(test) asm("syscall #0x20", !!(test), #test, __FILE__, __LINE__)
+#define true 1
+#define false 0

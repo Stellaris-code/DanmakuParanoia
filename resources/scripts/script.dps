@@ -1,0 +1,131 @@
+#include "danpa.dsh"
+
+Spawner spawner;
+Spawner rect_spawner;
+Bullet info;
+Bullet shard;
+AnimatedSprite boss_anim;
+obj3d_id BckgObjID;
+emitter_id smoke;
+
+void init()
+{
+	//printf("hello!\n");
+	
+	info.type = BULLET_CIRCLE;
+	info.motion.relative_x = info.motion.relative_y = 0.0;
+	info.motion.velocity = 100.0;
+	info.motion.angular_velocity = 0.0 * 3.1415/2.0;
+	info.motion.direction_angle = 0.0;
+	
+	shard.type = BULLET_RECT;
+	shard.motion.relative_x = shard.motion.relative_y = 0.0;
+	shard.motion.velocity = 200.0;
+	shard.motion.direction_angle = 0.0;
+	
+	spawner.motion.relative_x = 400.0;
+	spawner.motion.relative_y = 50.0;
+	spawner.motion.rotation = 3.1415/2.0;
+	spawner.motion.rotational_speed = 1000/50.0;
+	spawner.motion.velocity = 400.0;
+	spawner.motion.acceleration = 0.0;
+	spawner.motion.direction_angle = 0.0;
+	spawner.motion.angular_velocity = 400.0/50.0;
+	spawner.bullet_to_spawn = info;
+	spawner.spawn_interval = 1;
+	spawner.max_bullets = 5000;
+	spawner.active = true;
+	
+	rect_spawner.motion.relative_x = 400.0;
+	rect_spawner.motion.relative_y = 50.0;
+	rect_spawner.motion.rotation = 0.0;
+	rect_spawner.motion.rotational_speed = 200/50.0;
+	rect_spawner.motion.velocity = 200.0;
+	rect_spawner.motion.acceleration = 0.0;
+	rect_spawner.motion.direction_angle = 0.0;
+	rect_spawner.motion.angular_velocity = 200.0/50.0;
+	rect_spawner.bullet_to_spawn = shard;
+	rect_spawner.spawn_interval = 2;
+	rect_spawner.max_bullets = 5000;
+	rect_spawner.active = false;
+
+	spritesheet_id boss_sheet = LoadSpritesheet("resources/spritesheets/boss1.png", "boss1");
+
+	boss_anim = LoadAnimation("boss", boss_sheet, vec2(0.25, 0.25), vec2(470.0, 682.0),
+	{AnimFrameDesc(0, 0, 30), AnimFrameDesc(1, 0, 30), AnimFrameDesc(2, 0, 30), AnimFrameDesc(0, 1, 30)});
+	boss_anim.pos = vec2(400.0,125.0);
+	
+	music_id music = LoadMusic("resources/music/stage1.mp3");
+	BckgObjID = CreateObj3D("resources/chess.obj");
+	Object3D obj = GetObj3D(BckgObjID);
+	obj.texture = LoadTexture("resources/chesstexture.png", "chess");
+	UpdateObj3D(BckgObjID, obj);
+	smoke = LoadEmitter("resources/particles/spawn_smoke.json");
+	
+	PlayMusic(music);
+}
+
+void enable_shards()
+{
+	rect_spawner.active = true;
+}
+void intensify_shards()
+{
+	rect_spawner.spawn_interval = 1;
+}
+
+void spawn_smoke()
+{
+	
+}
+
+real ease_double(int function, real t)
+{
+	if (t < 0.5)
+	{
+		return Ease(function, 2.0*t);
+	}
+	else
+	{
+		t -= 0.5;
+		return 1.0 + Ease(function, 2.0*t);
+	}
+}
+
+void update()
+{
+	Delay(0, &spawn_smoke);
+	Delay(500, &enable_shards);
+	Delay(1000, &intensify_shards);
+	
+	Object3D obj = GetObj3D(BckgObjID);
+	obj.orientation = vec3(sin(frame/25.0)*5.0*DEG2RAD, frame/50.0, 0.0);
+	UpdateObj3D(BckgObjID, obj);
+
+	real x_t = (frame%400.0)/200.0;
+	if (x_t > 1.0) x_t = 2.0 - x_t;
+	boss_anim.pos.x = 400.0 - 30.0*(1.0 - 2.0*ease_double(EaseInOutQuint, x_t));
+	
+	real y_t = (frame%200.0)/100.0;
+	if (y_t > 1.0) y_t = 2.0 - y_t;
+	boss_anim.pos.y = 125.0 - 15.0*(1.0 - 2.0*Ease(EaseInOutCirc, y_t));
+
+	real rot_t = (frame%100.0)/50.0;
+	if (rot_t > 1.0) rot_t = 2.0 - rot_t;
+	rot_t = Ease(EaseInOutSine, rot_t);
+	rot_t = 1.0 - 2*rot_t;
+	boss_anim.angle = -rot_t*(PI/8);
+
+	boss_anim.DrawAnimatedSprite(15);
+	
+
+	spawner.bullet_to_spawn.motion.direction_angle  = 40.0/20.0 - (frame/50.0);
+	spawner.motion.relative_x = boss_anim.pos.x;
+	spawner.motion.relative_y = boss_anim.pos.y;
+	//spawner.bullet_to_spawn.motion.direction_angle  += 40.0 - %20.0;
+	//spawner.bullet_to_spawn.motion.direction_angle = (3.1415/2)*sin(frame/100.0);
+	//spawner.bullet_to_spawn.motion.relative_x = 300.0 + 0.0*frame/10.0;
+	//spawner.bullet_to_spawn.motion.velocity = 80.0 + frame/5.0;
+	spawner.UpdateSpawner();
+	rect_spawner.UpdateSpawner();
+}

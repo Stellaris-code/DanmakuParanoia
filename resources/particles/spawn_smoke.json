@@ -1,0 +1,36 @@
+{
+	"lifetime": 0.0,
+	"zorder": -500,
+	"blendmode": "additive",
+	"frequency": 5.0,
+	"burst_size" : 2,
+	"motion" : 
+	{
+		"x" : 0,
+		"y" : 0,
+		"parent" : "boss"
+	},
+	"motion-randomness":
+	{
+			"direction": 6.2832,
+			"velocity": 80
+	},
+	
+	"particles" : [{
+		"initial-color": "rgba(130,130,130,200)",
+		"final-color": "rgba(230,41,55,0)",
+		"initial-scale": [0.5, 0.5],
+		"final-scale": [0.25, 0.25],
+		"lifetime": 2.0,
+		"motion":
+		{
+			"rotation-speed": 3.1415,
+			"velocity": 20
+		},
+		"sprite" : 
+		{
+			"frame": [4096, 4096, 512, 512],
+			"sheet": "particles-sheet"
+		}
+	}]
+}
